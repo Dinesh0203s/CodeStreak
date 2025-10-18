@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 220 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 220 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* CodeStreak Custom Tokens */
+    --streak-fire: 15 100% 60%;
+    --streak-fire-glow: 25 100% 57%;
+    --success: 142 76% 36%;
+    --challenge: 217 91% 60%;
+    --premium: 262 83% 58%;
+    --premium-pink: 330 81% 60%;
+    
+    /* Gradients */
+    --gradient-streak: linear-gradient(135deg, hsl(15 100% 60%), hsl(25 100% 57%));
+    --gradient-premium: linear-gradient(135deg, hsl(262 83% 58%), hsl(330 81% 60%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(160 84% 39%));
+    
+    /* Shadows */
+    --shadow-glow: 0 0 30px hsl(var(--streak-fire) / 0.3);
+    --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 5% 7%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 5% 7%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 220 100% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 50.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 220 100% 60%;
+
+    /* CodeStreak Custom Tokens - Dark Mode */
+    --streak-fire: 15 100% 65%;
+    --streak-fire-glow: 25 100% 62%;
+    --success: 142 76% 45%;
+    --challenge: 217 91% 65%;
+    --premium: 262 83% 65%;
+    --premium-pink: 330 81% 65%;
+    
+    /* Shadows - Dark Mode */
+    --shadow-glow: 0 0 40px hsl(var(--streak-fire) / 0.5);
+    --shadow-card: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
