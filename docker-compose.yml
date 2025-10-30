@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: codestreak-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - codestreak-network
+
+  backend:
+    build: ./backend
+    container_name: codestreak-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/codestreak?authSource=admin
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+      - NODE_ENV=development
+      - PORT=5000
+    depends_on:
+      - mongodb
+    networks:
+      - codestreak-network
+
+  frontend:
+    build: .
+    container_name: codestreak-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    networks:
+      - codestreak-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  codestreak-network:
+    driver: bridge
+
