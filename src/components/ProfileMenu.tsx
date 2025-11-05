@@ -51,8 +51,9 @@ export const ProfileMenu = () => {
     }
   };
 
-  const isAdmin = userData?.role === 'admin' || userData?.role === 'superAdmin';
+  const isAdmin = userData?.role === 'admin' || userData?.role === 'superAdmin' || userData?.role === 'deptAdmin';
   const isSuperAdmin = userData?.role === 'superAdmin';
+  const isDeptAdmin = userData?.role === 'deptAdmin';
 
   if (!user) return null;
 
@@ -100,10 +101,14 @@ export const ProfileMenu = () => {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => navigate(isSuperAdmin ? '/super-admin' : '/admin')}
+              onClick={() => navigate(
+                isSuperAdmin ? '/super-admin' 
+                : isDeptAdmin ? '/dept-admin' 
+                : '/admin'
+              )}
             >
               <Shield className="mr-2 h-4 w-4" />
-              {isSuperAdmin ? 'Super Admin' : 'Admin'} Dashboard
+              {isSuperAdmin ? 'Super Admin' : isDeptAdmin ? 'Department Admin' : 'Admin'} Dashboard
             </DropdownMenuItem>
           </>
         )}

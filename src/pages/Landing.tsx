@@ -21,9 +21,15 @@ const Landing = () => {
           navigate('/super-admin');
         } else if (role === 'admin') {
           navigate('/admin');
+        } else if (role === 'deptAdmin') {
+          navigate('/dept-admin');
         } else {
           // Check if user has completed onboarding
-          if (!userData.fullName || !userData.college) {
+          // User is considered onboarded if:
+          // 1. isOnboarded is explicitly true, OR
+          // 2. They have both fullName and college (backward compatibility)
+          const isOnboarded = userData.isOnboarded === true || (!!userData.fullName && !!userData.college);
+          if (!isOnboarded) {
             navigate('/onboarding');
           } else {
             navigate('/dashboard');

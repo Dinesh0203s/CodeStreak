@@ -11,7 +11,9 @@ export interface IUser extends Document {
   passoutYear?: string;
   leetcodeHandle?: string;
   codechefHandle?: string;
-  role?: 'user' | 'admin' | 'superAdmin';
+  role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+  isBanned?: boolean;
+  isOnboarded?: boolean;
   currentStreak: number;
   longestStreak: number;
   totalProblemsSolved: number;
@@ -87,8 +89,16 @@ const UserSchema: Schema = new Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin', 'superAdmin'],
+      enum: ['user', 'admin', 'superAdmin', 'deptAdmin'],
       default: 'user',
+    },
+    isBanned: {
+      type: Boolean,
+      default: false,
+    },
+    isOnboarded: {
+      type: Boolean,
+      default: false,
     },
     currentStreak: {
       type: Number,

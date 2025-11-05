@@ -412,14 +412,15 @@ router.get('/codechef/:username', async (req: Request, res: Response) => {
 router.get('/leetcode/:username/submissions', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const limit = parseInt(req.query.limit as string) || 1000; // Max submissions to fetch
+    // Fetch maximum submissions (LeetCode allows up to 1000 in recent submissions)
+    const limit = parseInt(req.query.limit as string) || 1000;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
     }
 
     try {
-      // Use GraphQL to get recent submissions
+      // Use GraphQL to get ALL recent submissions (up to 1000)
       const graphqlResponse = await axios.post(
         'https://leetcode.com/graphql/',
         {
@@ -452,7 +453,7 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
       const data = graphqlResponse.data?.data;
       
       if (data?.recentAcSubmissionList) {
-        // Group submissions by date
+        // Group ALL submissions by date (no date filtering)
         const dateMap: { [key: string]: number } = {};
         
         data.recentAcSubmissionList.forEach((submission: any) => {
@@ -464,17 +465,20 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
           }
         });
 
-        // Convert to array format
-        const submissionDates = Object.entries(dateMap).map(([date, count]) => ({
-          date,
-          count,
-        }));
+        // Convert to array format and sort by date
+        const submissionDates = Object.entries(dateMap)
+          .map(([date, count]) => ({
+            date,
+            count,
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date));
 
         return res.json({
           success: true,
           username,
           submissionDates,
           totalSubmissions: data.recentAcSubmissionList.length,
+          uniqueDates: submissionDates.length,
         });
       }
 
@@ -525,12 +529,12 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
       const $ = load(response.data);
       const dateMap: { [key: string]: number } = {};
 
-      // Try to find submission dates from activity or calendar
+      // Try to find ALL submission dates from activity or calendar (no date filtering)
       // CodeChef doesn't have a public API for submission dates, so we'll try to scrape from activity calendar
       const activityCalendar = $('.calendar-container, .rating-calendar, .activity-calendar');
       
       if (activityCalendar.length > 0) {
-        // Find all activity dates in the calendar
+        // Find ALL activity dates in the calendar
         activityCalendar.find('[data-date], .activity-date, .calendar-day').each((_, elem) => {
           const dateAttr = $(elem).attr('data-date') || $(elem).attr('title') || $(elem).text().trim();
           if (dateAttr) {
@@ -539,6 +543,7 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
               if (!isNaN(date.getTime())) {
                 date.setHours(0, 0, 0, 0);
                 const dateKey = date.toISOString().split('T')[0];
+                // Include ALL dates (no filtering)
                 dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
               }
             } catch (e) {
@@ -557,6 +562,7 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
             if (!isNaN(date.getTime())) {
               date.setHours(0, 0, 0, 0);
               const dateKey = date.toISOString().split('T')[0];
+              // Include ALL dates (no filtering)
               dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
             }
           } catch (e) {
@@ -565,11 +571,13 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
         }
       });
 
-      // Convert to array format
-      const submissionDates = Object.entries(dateMap).map(([date, count]) => ({
-        date,
-        count,
-      }));
+      // Convert to array format and sort by date
+      const submissionDates = Object.entries(dateMap)
+        .map(([date, count]) => ({
+          date,
+          count,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
       // If no dates found, return empty array (CodeChef doesn't provide easy access to submission dates)
       return res.json({

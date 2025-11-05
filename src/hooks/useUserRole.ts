@@ -28,8 +28,9 @@ export const useUserRole = () => {
     fetchUserData();
   }, [user]);
 
-  const isAdmin = userData?.role === 'admin' || userData?.role === 'superAdmin';
+  const isAdmin = userData?.role === 'admin' || userData?.role === 'superAdmin' || userData?.role === 'deptAdmin';
   const isSuperAdmin = userData?.role === 'superAdmin';
+  const isDeptAdmin = userData?.role === 'deptAdmin';
   const isRegularUser = !isAdmin;
 
   return {
@@ -37,6 +38,7 @@ export const useUserRole = () => {
     role: userData?.role || 'user',
     isAdmin,
     isSuperAdmin,
+    isDeptAdmin,
     isRegularUser,
     loading,
   };

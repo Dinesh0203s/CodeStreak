@@ -25,6 +25,7 @@ const Onboarding = () => {
   const [loadingColleges, setLoadingColleges] = useState(true);
   const [verifyingLeetCode, setVerifyingLeetCode] = useState(false);
   const [verifyingCodeChef, setVerifyingCodeChef] = useState(false);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [formData, setFormData] = useState({
     fullName: '',
     college: '',
@@ -33,6 +34,55 @@ const Onboarding = () => {
     leetcodeHandle: '',
     codechefHandle: '',
   });
+
+  // Check if user is already onboarded
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+
+      try {
+        const { getUserByFirebaseUid } = await import('@/lib/api');
+        const userData = await getUserByFirebaseUid(user.uid);
+        const role = userData.role || 'user';
+
+        // Check if user has completed onboarding
+        // User is considered onboarded if:
+        // 1. isOnboarded is explicitly true, OR
+        // 2. They have both fullName and college (backward compatibility)
+        const isOnboarded = userData.isOnboarded === true || (!!userData.fullName && !!userData.college);
+
+        if (isOnboarded) {
+          // User is already onboarded, redirect them
+          if (role === 'superAdmin') {
+            navigate('/super-admin');
+          } else if (role === 'admin') {
+            navigate('/admin');
+          } else {
+            navigate('/dashboard');
+          }
+          return;
+        }
+
+        // Pre-fill form with existing data if available
+        if (userData.fullName) setFormData(prev => ({ ...prev, fullName: userData.fullName || '' }));
+        if (userData.college) setFormData(prev => ({ ...prev, college: userData.college || '' }));
+        if (userData.department) setFormData(prev => ({ ...prev, department: userData.department || '' }));
+        if (userData.passoutYear) setFormData(prev => ({ ...prev, passoutYear: userData.passoutYear || '' }));
+        if (userData.leetcodeHandle) setFormData(prev => ({ ...prev, leetcodeHandle: userData.leetcodeHandle || '' }));
+        if (userData.codechefHandle) setFormData(prev => ({ ...prev, codechefHandle: userData.codechefHandle || '' }));
+      } catch (error: any) {
+        // User might not exist in MongoDB yet, that's okay - they can onboard
+        console.log('User data not found, proceeding with onboarding:', error.message);
+      } finally {
+        setCheckingOnboarding(false);
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [user, navigate]);
 
   useEffect(() => {
     const fetchColleges = async () => {
@@ -86,6 +136,8 @@ const Onboarding = () => {
           navigate('/super-admin');
         } else if (role === 'admin') {
           navigate('/admin');
+        } else if (role === 'deptAdmin') {
+          navigate('/dept-admin');
         } else {
           navigate('/dashboard');
         }
@@ -114,6 +166,23 @@ const Onboarding = () => {
         return false;
     }
   };
+
+  // Show loading while checking onboarding status
+  if (checkingOnboarding) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-streak mx-auto mb-4"></div>
+          <div>Checking onboarding status...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't show onboarding if user is not logged in (should be handled by redirect above, but just in case)
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

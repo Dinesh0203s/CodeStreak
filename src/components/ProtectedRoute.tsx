@@ -24,22 +24,43 @@ export const ProtectedRoute = ({ children, requireRegularUser = false }: Protect
         return;
       }
 
-      if (requireRegularUser) {
-        try {
-          const userData = await getUserByFirebaseUid(user.uid);
-          const role = userData.role || 'user';
-          
+      try {
+        const userData = await getUserByFirebaseUid(user.uid);
+        
+        // Check if user has completed onboarding (unless they're an admin/superAdmin)
+        const role = userData.role || 'user';
+        
+        // Only check onboarding for regular users (not admins, superAdmins, or deptAdmins)
+        // User is considered onboarded if:
+        // 1. isOnboarded is explicitly true, OR
+        // 2. They have both fullName and college (backward compatibility)
+        if (role === 'user') {
+          const isOnboarded = userData.isOnboarded === true || (!!userData.fullName && !!userData.college);
+          if (!isOnboarded) {
+            navigate('/onboarding');
+            setCheckingRole(false);
+            return;
+          }
+        }
+
+        if (requireRegularUser) {
           if (role === 'superAdmin') {
             navigate('/super-admin');
             return;
           } else if (role === 'admin') {
             navigate('/admin');
             return;
+          } else if (role === 'deptAdmin') {
+            navigate('/dept-admin');
+            return;
           }
-        } catch (error: any) {
-          // User might not exist yet, allow access for regular users
-          console.log('User data not found, allowing access:', error.message);
         }
+      } catch (error: any) {
+        // User might not exist yet, redirect to onboarding
+        console.log('User data not found, redirecting to onboarding:', error.message);
+        navigate('/onboarding');
+        setCheckingRole(false);
+        return;
       }
 
       setCheckingRole(false);

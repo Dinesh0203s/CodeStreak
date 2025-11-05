@@ -14,6 +14,7 @@ import Profile from "./pages/Profile";
 import Reminder from "./pages/Reminder";
 import AdminDashboard from "./pages/AdminDashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import DeptAdminDashboard from "./pages/DeptAdminDashboard";
 import ChallengePage from "./pages/Challenge";
 import NotFound from "./pages/NotFound";
 
@@ -57,6 +58,7 @@ const App = () => (
                 } 
               />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/dept-admin" element={<DeptAdminDashboard />} />
               <Route 
                 path="/super-admin" 
                 element={

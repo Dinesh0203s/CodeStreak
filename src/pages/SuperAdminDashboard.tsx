@@ -46,7 +46,10 @@ import {
   Trash2,
   Ban,
   CheckCircle,
-  GraduationCap
+  GraduationCap,
+  Edit,
+  UserCog,
+  X
 } from 'lucide-react';
 import {
   Table,
@@ -57,10 +60,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { getColleges, createCollege, deleteCollege, banCollege, getOverallLeaderboard, College } from '@/lib/api';
+import { 
+  getColleges, 
+  createCollege, 
+  deleteCollege, 
+  banCollege, 
+  getOverallLeaderboard, 
+  getAllUsers,
+  updateUserRole,
+  banUser,
+  adminUpdateUser,
+  College,
+  User
+} from '@/lib/api';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const SuperAdminDashboard = () => {
+  const { user: currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCollege, setSelectedCollege] = useState('all');
   const [colleges, setColleges] = useState<College[]>([]);
@@ -74,6 +91,26 @@ const SuperAdminDashboard = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  
+  // User management state
+  const [users, setUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
+  const [userCollegeFilter, setUserCollegeFilter] = useState<string>('all');
+  const [userPage, setUserPage] = useState(1);
+  const [userTotalPages, setUserTotalPages] = useState(1);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editUserData, setEditUserData] = useState({
+    fullName: '',
+    college: '',
+    department: '',
+    passoutYear: '',
+    leetcodeHandle: '',
+    codechefHandle: '',
+    role: 'user' as 'user' | 'admin' | 'superAdmin',
+  });
 
   // Calculate real stats from colleges
   const globalStats = {
@@ -86,7 +123,20 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     fetchColleges();
     fetchTopPerformers();
-  }, []);
+    fetchUsers();
+  }, [userPage, userRoleFilter, userCollegeFilter]);
+
+  useEffect(() => {
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      if (userPage === 1) {
+        fetchUsers();
+      } else {
+        setUserPage(1);
+      }
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [userSearchQuery]);
 
   const fetchTopPerformers = async () => {
     try {
@@ -158,6 +208,131 @@ const SuperAdminDashboard = () => {
       fetchColleges();
     } catch (error: any) {
       toast.error(error.message || 'Failed to update college status');
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true);
+      const params: any = {
+        page: userPage,
+        limit: 20,
+      };
+      if (userSearchQuery) params.search = userSearchQuery;
+      if (userRoleFilter !== 'all') params.role = userRoleFilter;
+      if (userCollegeFilter !== 'all') params.college = userCollegeFilter;
+
+      const data = await getAllUsers(params);
+      setUsers(data.users);
+      setUserTotalPages(data.totalPages);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load users');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setEditUserData({
+      fullName: user.fullName || '',
+      college: user.college || '',
+      department: user.department || '',
+      passoutYear: user.passoutYear || '',
+      leetcodeHandle: user.leetcodeHandle || '',
+      codechefHandle: user.codechefHandle || '',
+      role: user.role || 'user',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return;
+
+    // If role is admin, college is required
+    if (editUserData.role === 'admin' && !editUserData.college) {
+      toast.error('College is required when role is admin');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await adminUpdateUser(editingUser.firebaseUid, editUserData);
+      toast.success('User updated successfully');
+      setIsEditDialogOpen(false);
+      setEditingUser(null);
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const [roleChangeDialog, setRoleChangeDialog] = useState<{
+    open: boolean;
+    user: User | null;
+    newRole: 'user' | 'admin' | 'superAdmin' | null;
+    selectedCollege: string;
+  }>({
+    open: false,
+    user: null,
+    newRole: null,
+    selectedCollege: '',
+  });
+
+  const handleUpdateRole = async (firebaseUid: string, newRole: 'user' | 'admin' | 'superAdmin', user: User) => {
+    // If changing to admin, require college selection
+    if (newRole === 'admin') {
+      setRoleChangeDialog({
+        open: true,
+        user,
+        newRole,
+        selectedCollege: user.college || '',
+      });
+      return;
+    }
+
+    // For other roles, update directly
+    try {
+      await updateUserRole(firebaseUid, newRole);
+      toast.success('User role updated successfully');
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update role');
+    }
+  };
+
+  const handleConfirmRoleChange = async () => {
+    if (!roleChangeDialog.user || !roleChangeDialog.newRole) return;
+
+    // If changing to admin, college is required
+    if (roleChangeDialog.newRole === 'admin' && !roleChangeDialog.selectedCollege) {
+      toast.error('Please select a college for the admin');
+      return;
+    }
+
+    try {
+      await updateUserRole(
+        roleChangeDialog.user.firebaseUid,
+        roleChangeDialog.newRole,
+        roleChangeDialog.selectedCollege || undefined
+      );
+      toast.success('User role updated successfully');
+      setRoleChangeDialog({ open: false, user: null, newRole: null, selectedCollege: '' });
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update role');
+    }
+  };
+
+  const handleBanUser = async (firebaseUid: string, isBanned: boolean, userName: string) => {
+    try {
+      await banUser(firebaseUid, isBanned);
+      toast.success(`User "${userName}" ${isBanned ? 'banned' : 'unbanned'} successfully`);
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update user status');
     }
   };
 
@@ -500,64 +675,368 @@ const SuperAdminDashboard = () => {
 
             {/* User Management Tab */}
             <TabsContent value="users">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">User Management</h2>
-                <Button className="bg-gradient-streak border-0 text-white">
-                  Add New User
-                </Button>
+              <div className="mb-6 flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">User Management</h2>
+                </div>
+                
+                {/* Filters */}
+                <div className="flex flex-wrap gap-4">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search users by name or email..."
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={userRoleFilter} onValueChange={setUserRoleFilter}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Filter by role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="superAdmin">Super Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={userCollegeFilter} onValueChange={setUserCollegeFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Filter by college" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Colleges</SelectItem>
+                      {colleges.map((college) => (
+                        <SelectItem key={college._id} value={college.name}>
+                          {college.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>College</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[
-                      { id: 1, name: 'Raj Patel', email: 'raj@iitb.ac.in', college: 'IIT Bombay', role: 'Admin', status: 'Active' },
-                      { id: 2, name: 'Sarah Khan', email: 'sarah@bits.edu', college: 'BITS Pilani', role: 'Admin', status: 'Active' },
-                      { id: 3, name: 'Alice Johnson', email: 'alice@mit.edu', college: 'MIT College', role: 'User', status: 'Active' },
-                      { id: 4, name: 'John Doe', email: 'john@vit.ac.in', college: 'VIT Vellore', role: 'User', status: 'Inactive' },
-                    ].map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                        <TableCell>{user.college}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.role === 'Admin' 
-                              ? 'bg-primary/10 text-primary' 
-                              : 'bg-muted text-muted-foreground'
-                          }`}>
-                            {user.role}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.status === 'Active' 
-                              ? 'bg-success/10 text-success' 
-                              : 'bg-destructive/10 text-destructive'
-                          }`}>
-                            {user.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              {usersLoading ? (
+                <div className="text-center py-8">Loading users...</div>
+              ) : (
+                <>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>College</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {users.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                              No users found
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          users.map((user) => (
+                            <TableRow key={user._id || user.firebaseUid}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  {user.photoURL && (
+                                    <img 
+                                      src={user.photoURL} 
+                                      alt={user.displayName}
+                                      className="w-8 h-8 rounded-full"
+                                    />
+                                  )}
+                                  <div>
+                                    <div>{user.fullName || user.displayName}</div>
+                                    {user.currentStreak !== undefined && (
+                                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <Flame className="h-3 w-3 text-streak" />
+                                        {user.currentStreak} day streak
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                              <TableCell>{user.college || '-'}</TableCell>
+                              <TableCell>{user.department || '-'}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={user.role || 'user'}
+                                  onValueChange={(value) => {
+                                    if (user.firebaseUid !== currentUser?.uid) {
+                                      handleUpdateRole(user.firebaseUid, value as 'user' | 'admin' | 'superAdmin', user);
+                                    } else {
+                                      toast.error('Cannot change your own role');
+                                    }
+                                  }}
+                                  disabled={user.firebaseUid === currentUser?.uid}
+                                >
+                                  <SelectTrigger className="w-[120px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="user">User</SelectItem>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="superAdmin">Super Admin</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                {user.isBanned ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
+                                    <Ban className="mr-1 h-3 w-3" />
+                                    Banned
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                                    <CheckCircle className="mr-1 h-3 w-3" />
+                                    Active
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditUser(user)}
+                                    title="Edit user"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleBanUser(user.firebaseUid, !user.isBanned, user.fullName || user.displayName)}
+                                    title={user.isBanned ? 'Unban user' : 'Ban user'}
+                                    disabled={user.firebaseUid === currentUser?.uid}
+                                  >
+                                    <Ban className={`h-4 w-4 ${user.isBanned ? 'text-success' : 'text-destructive'}`} />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  
+                  {/* Pagination */}
+                  {userTotalPages > 1 && (
+                    <div className="flex items-center justify-between mt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Page {userPage} of {userTotalPages}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                          disabled={userPage === 1}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
+                          disabled={userPage === userTotalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Edit User Dialog */}
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Edit User</DialogTitle>
+                    <DialogDescription>
+                      Update user information. Changes will be saved immediately.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-fullName">Full Name</Label>
+                        <Input
+                          id="edit-fullName"
+                          value={editUserData.fullName}
+                          onChange={(e) => setEditUserData({ ...editUserData, fullName: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-college">
+                          College {editUserData.role === 'admin' && '*'}
+                        </Label>
+                        {editUserData.role === 'admin' ? (
+                          <Select
+                            value={editUserData.college}
+                            onValueChange={(value) => setEditUserData({ ...editUserData, college: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a college (required for admin)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {colleges.map((college) => (
+                                <SelectItem key={college._id} value={college.name}>
+                                  {college.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            id="edit-college"
+                            value={editUserData.college}
+                            onChange={(e) => setEditUserData({ ...editUserData, college: e.target.value })}
+                            placeholder="College name"
+                          />
+                        )}
+                        {editUserData.role === 'admin' && (
+                          <p className="text-xs text-muted-foreground">
+                            Admins must be assigned to one college only
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-department">Department</Label>
+                        <Input
+                          id="edit-department"
+                          value={editUserData.department}
+                          onChange={(e) => setEditUserData({ ...editUserData, department: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-passoutYear">Passout Year</Label>
+                        <Input
+                          id="edit-passoutYear"
+                          value={editUserData.passoutYear}
+                          onChange={(e) => setEditUserData({ ...editUserData, passoutYear: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-leetcodeHandle">LeetCode Handle</Label>
+                        <Input
+                          id="edit-leetcodeHandle"
+                          value={editUserData.leetcodeHandle}
+                          onChange={(e) => setEditUserData({ ...editUserData, leetcodeHandle: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-codechefHandle">CodeChef Handle</Label>
+                        <Input
+                          id="edit-codechefHandle"
+                          value={editUserData.codechefHandle}
+                          onChange={(e) => setEditUserData({ ...editUserData, codechefHandle: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-role">Role</Label>
+                        <Select
+                          value={editUserData.role}
+                          onValueChange={(value) => setEditUserData({ ...editUserData, role: value as 'user' | 'admin' | 'superAdmin' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="superAdmin">Super Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditDialogOpen(false);
+                        setEditingUser(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveUser}
+                      disabled={isSubmitting}
+                      className="bg-gradient-streak border-0 text-white"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Role Change Dialog - For Admin Assignment */}
+              <Dialog open={roleChangeDialog.open} onOpenChange={(open) => {
+                if (!open) {
+                  setRoleChangeDialog({ open: false, user: null, newRole: null, selectedCollege: '' });
+                }
+              }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Assign Admin Role</DialogTitle>
+                    <DialogDescription>
+                      Please select a college for this admin. Admins can only manage their assigned college.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="admin-college">College *</Label>
+                      <Select
+                        value={roleChangeDialog.selectedCollege}
+                        onValueChange={(value) => setRoleChangeDialog({ ...roleChangeDialog, selectedCollege: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a college" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {colleges.map((college) => (
+                            <SelectItem key={college._id} value={college.name}>
+                              {college.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        This admin will only be able to view and manage data for the selected college.
+                      </p>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setRoleChangeDialog({ open: false, user: null, newRole: null, selectedCollege: '' })}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleConfirmRoleChange}
+                      disabled={!roleChangeDialog.selectedCollege}
+                      className="bg-gradient-streak border-0 text-white"
+                    >
+                      Assign Admin Role
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             {/* Role Management Tab */}

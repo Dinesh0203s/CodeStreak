@@ -13,7 +13,12 @@ export interface User {
   passoutYear?: string;
   leetcodeHandle?: string;
   codechefHandle?: string;
-  role?: 'user' | 'admin' | 'superAdmin';
+  role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+  isBanned?: boolean;
+  isOnboarded?: boolean;
+  currentStreak?: number;
+  longestStreak?: number;
+  totalProblemsSolved?: number;
   leetcodeStats?: LeetCodeStats & { lastScrapedAt?: string };
   codechefStats?: CodeChefStats & { lastScrapedAt?: string };
   createdAt?: string;
@@ -198,6 +203,87 @@ export const banCollege = async (collegeId: string, isBanned: boolean): Promise<
 
     await handleFetchError(response, 'Failed to update college ban status');
     return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Department Management API (for admins)
+// Get departments for a college
+export const getCollegeDepartments = async (collegeName: string): Promise<string[]> => {
+  try {
+    const encodedName = encodeURIComponent(collegeName);
+    const response = await fetch(`${API_BASE_URL}/colleges/${encodedName}/departments`);
+    await handleFetchError(response, 'Failed to fetch departments');
+    const data = await response.json();
+    return data.departments || [];
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Add department to college
+export const addDepartment = async (collegeName: string, department: string): Promise<College> => {
+  try {
+    const encodedName = encodeURIComponent(collegeName);
+    const response = await fetch(`${API_BASE_URL}/colleges/${encodedName}/departments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ department }),
+    });
+    await handleFetchError(response, 'Failed to add department');
+    const data = await response.json();
+    return data.college;
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Update department in college
+export const updateDepartment = async (collegeName: string, oldName: string, newName: string): Promise<College> => {
+  try {
+    const encodedCollegeName = encodeURIComponent(collegeName);
+    const encodedOldName = encodeURIComponent(oldName);
+    const response = await fetch(`${API_BASE_URL}/colleges/${encodedCollegeName}/departments/${encodedOldName}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ newName }),
+    });
+    await handleFetchError(response, 'Failed to update department');
+    const data = await response.json();
+    return data.college;
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Delete department from college
+export const deleteDepartment = async (collegeName: string, departmentName: string): Promise<College> => {
+  try {
+    const encodedCollegeName = encodeURIComponent(collegeName);
+    const encodedDepartmentName = encodeURIComponent(departmentName);
+    const response = await fetch(`${API_BASE_URL}/colleges/${encodedCollegeName}/departments/${encodedDepartmentName}`, {
+      method: 'DELETE',
+    });
+    await handleFetchError(response, 'Failed to delete department');
+    const data = await response.json();
+    return data.college;
   } catch (error: any) {
     if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
       throw new Error('Backend server is not running. Please start it with: npm run server');
@@ -499,6 +585,127 @@ export const refreshUserStats = async (firebaseUid: string): Promise<User> => {
     await handleFetchError(response, 'Failed to refresh stats');
     const data = await response.json();
     return data.user;
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// User Management API (for admins)
+// Get all users with optional filters
+export const getAllUsers = async (params?: {
+  college?: string;
+  role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+  department?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{
+  users: User[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> => {
+  try {
+    const queryParams = new URLSearchParams();
+    if (params?.college) queryParams.append('college', params.college);
+    if (params?.role) queryParams.append('role', params.role);
+    if (params?.department) queryParams.append('department', params.department);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append('page', String(params.page));
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+
+    const response = await fetch(`${API_BASE_URL}/users?${queryParams}`);
+    await handleFetchError(response, 'Failed to fetch users');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Update user role
+export const updateUserRole = async (
+  firebaseUid: string, 
+  role: 'user' | 'admin' | 'superAdmin' | 'deptAdmin',
+  college?: string,
+  department?: string
+): Promise<User> => {
+  try {
+    const body: any = { role };
+    if (role === 'admin' && college) {
+      body.college = college;
+    }
+    if (role === 'deptAdmin' && college && department) {
+      body.college = college;
+      body.department = department;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/users/${firebaseUid}/role`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    await handleFetchError(response, 'Failed to update user role');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Ban/Unban user
+export const banUser = async (firebaseUid: string, isBanned: boolean): Promise<User> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/${firebaseUid}/ban`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isBanned }),
+    });
+    await handleFetchError(response, 'Failed to update user ban status');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Admin update user (for super admin and admin)
+export const adminUpdateUser = async (
+  firebaseUid: string,
+  userData: {
+    fullName?: string;
+    college?: string;
+    department?: string;
+    passoutYear?: string;
+    leetcodeHandle?: string;
+    codechefHandle?: string;
+    role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+  }
+): Promise<User> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/${firebaseUid}/admin`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(userData),
+    });
+    await handleFetchError(response, 'Failed to update user');
+    return response.json();
   } catch (error: any) {
     if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
       throw new Error('Backend server is not running. Please start it with: npm run server');
