@@ -6,6 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -67,14 +74,17 @@ import {
   updateDepartment,
   deleteDepartment,
   updateUserRole,
+  getUserByFirebaseUid,
   College,
   User
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard = () => {
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [colleges, setColleges] = useState<College[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,12 +129,54 @@ const AdminDashboard = () => {
   const [selectedDeptForAdmin, setSelectedDeptForAdmin] = useState<string>('');
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [loadingAvailableUsers, setLoadingAvailableUsers] = useState(false);
+  const [checkingRole, setCheckingRole] = useState(true);
+
+  // Check if user is admin before loading dashboard
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (!currentUser?.uid) {
+        navigate('/auth');
+        return;
+      }
+
+      try {
+        const userData = await getUserByFirebaseUid(currentUser.uid);
+        const role = userData.role || 'user';
+        
+        // Redirect if not admin
+        if (role !== 'admin') {
+          if (role === 'superAdmin') {
+            navigate('/super-admin');
+          } else if (role === 'deptAdmin') {
+            navigate('/dept-admin');
+          } else {
+            navigate('/dashboard');
+          }
+          return;
+        }
+
+        // User is admin, proceed to load data
+        setCheckingRole(false);
+        fetchColleges();
+        fetchStudents();
+        fetchDeptAdmins();
+      } catch (error: any) {
+        console.error('Error checking admin role:', error);
+        toast.error('Failed to verify admin access');
+        navigate('/dashboard');
+      }
+    };
+
+    checkAdminRole();
+  }, [currentUser?.uid, navigate]);
 
   useEffect(() => {
+    if (checkingRole) return; // Don't fetch if still checking role
+    
     fetchColleges();
     fetchStudents();
     fetchDeptAdmins();
-  }, [studentPage, currentUser?.email]);
+  }, [studentPage, currentUser?.email, checkingRole]);
 
   useEffect(() => {
     // Debounce search
@@ -637,6 +689,18 @@ const AdminDashboard = () => {
     college.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     college.location?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Show loading state while checking role
+  if (checkingRole) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-streak mx-auto mb-4"></div>
+          <div>Verifying admin access...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
