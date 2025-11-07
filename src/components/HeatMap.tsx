@@ -192,55 +192,58 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
         </p>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex gap-1.5 items-start">
-          {/* Day labels */}
-          <div className="flex flex-col gap-1.5 mr-3 text-xs text-muted-foreground pt-7">
-            <div className="h-3.5"></div>
-            <div className="h-3.5 flex items-center">S</div>
-            <div className="h-3.5 flex items-center">M</div>
-            <div className="h-3.5 flex items-center">T</div>
-            <div className="h-3.5 flex items-center">W</div>
-            <div className="h-3.5 flex items-center">T</div>
-            <div className="h-3.5 flex items-center">F</div>
-            <div className="h-3.5 flex items-center">S</div>
-          </div>
+      <div className="relative">
+        {/* Day labels - fixed on left */}
+        <div className="absolute left-0 top-0 z-10 flex flex-col gap-1.5 mr-3 text-xs text-muted-foreground pt-7 bg-card pr-2">
+          <div className="h-3.5"></div>
+          <div className="h-3.5 flex items-center">S</div>
+          <div className="h-3.5 flex items-center">M</div>
+          <div className="h-3.5 flex items-center">T</div>
+          <div className="h-3.5 flex items-center">W</div>
+          <div className="h-3.5 flex items-center">T</div>
+          <div className="h-3.5 flex items-center">F</div>
+          <div className="h-3.5 flex items-center">S</div>
+        </div>
 
-          {/* Heat map cells */}
-          <div className="flex gap-1.5">
-            {filledWeeks.map((week, weekIndex) => (
-              <div key={weekIndex} className="flex flex-col gap-1.5">
-                {week.map((cell, dayIndex) => {
-                  if (!cell) {
-                    return <div key={dayIndex} className="w-3.5 h-3.5" />;
-                  }
+        {/* Scrollable heatmap container */}
+        <div className="heatmap-scroll overflow-x-auto overflow-y-visible pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'thin' }}>
+          <div className="flex gap-1.5 items-start pl-8">
+            {/* Heat map cells */}
+            <div className="flex gap-1.5">
+              {filledWeeks.map((week, weekIndex) => (
+                <div key={weekIndex} className="flex flex-col gap-1.5">
+                  {week.map((cell, dayIndex) => {
+                    if (!cell) {
+                      return <div key={dayIndex} className="w-3.5 h-3.5" />;
+                    }
 
-                  return (
-                    <TooltipProvider key={dayIndex}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className={`w-3.5 h-3.5 border border-border/30 cursor-pointer hover:border-border hover:scale-110 transition-all ${getColor(
-                              cell.count
-                            )}`}
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <div className="text-sm">
-                            <div className="font-medium">{formatDate(cell.date)}</div>
-                            <div className="text-muted-foreground">
-                              {cell.count === 0
-                                ? 'No submissions'
-                                : `${cell.count} problem${cell.count > 1 ? 's' : ''} solved`}
+                    return (
+                      <TooltipProvider key={dayIndex}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className={`w-3.5 h-3.5 border border-border/30 cursor-pointer hover:border-border hover:scale-110 transition-all ${getColor(
+                                cell.count
+                              )}`}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-sm">
+                              <div className="font-medium">{formatDate(cell.date)}</div>
+                              <div className="text-muted-foreground">
+                                {cell.count === 0
+                                  ? 'No submissions'
+                                  : `${cell.count} problem${cell.count > 1 ? 's' : ''} solved`}
+                              </div>
                             </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  );
-                })}
-              </div>
-            ))}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
