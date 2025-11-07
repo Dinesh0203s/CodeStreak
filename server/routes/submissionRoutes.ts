@@ -144,9 +144,9 @@ router.get('/user/:firebaseUid/heatmap', async (req: Request, res: Response) => 
   try {
     const { firebaseUid } = req.params;
     
-    // Get all activity data from the dedicated heatmap collection
+    // Get all activity data from the dedicated heatmap collection (no date limits - lifetime data)
     const activities = await ActivityHeatmap.find({ firebaseUid })
-      .select('dateKey count sources')
+      .select('dateKey count sources date')
       .sort({ date: 1 });
     
     // Convert to the expected format
@@ -155,7 +155,15 @@ router.get('/user/:firebaseUid/heatmap', async (req: Request, res: Response) => 
       count: activity.count,
     }));
 
-    console.log(`Heatmap data for user ${firebaseUid}: ${heatmapData.length} days with activity`);
+    // Log date range for debugging
+    if (heatmapData.length > 0) {
+      const earliest = heatmapData[0].date;
+      const latest = heatmapData[heatmapData.length - 1].date;
+      console.log(`Heatmap data for user ${firebaseUid}: ${heatmapData.length} days with activity (${earliest} to ${latest})`);
+    } else {
+      console.log(`Heatmap data for user ${firebaseUid}: No activity data found. User may need to refresh stats.`);
+    }
+    
     res.json(heatmapData);
   } catch (error: any) {
     console.error('Error fetching heatmap data:', error);

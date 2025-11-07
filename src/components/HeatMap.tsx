@@ -21,6 +21,7 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
     maxStreak: longestStreak,
     timeRange: '',
   });
+  const [dataSeemsLimited, setDataSeemsLimited] = useState(false);
 
   useEffect(() => {
     // Create a map of date strings to counts
@@ -39,9 +40,14 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // If no valid dates, use last year as default
+    // Use the earliest date from data (lifetime data)
     const earliestDate = dates.length > 0 ? dates[0] : new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
     earliestDate.setHours(0, 0, 0, 0);
+    
+    // Log for debugging
+    if (dates.length > 0) {
+      console.log(`Heatmap: ${data.length} days with activity, earliest: ${earliestDate.toISOString().split('T')[0]}, latest: ${dates[dates.length - 1].toISOString().split('T')[0]}`);
+    }
 
     // Calculate time range (in months)
     const monthsDiff = (today.getFullYear() - earliestDate.getFullYear()) * 12 + (today.getMonth() - earliestDate.getMonth());
@@ -59,6 +65,9 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
     } else {
       timeRange = 'lifetime';
     }
+    
+    // Check if data seems limited (less than 3 months) - might need to refresh stats
+    const dataSeemsLimited = monthsDiff < 3 && dates.length > 0;
 
     // Use the earliest date from data for lifetime stats (no limit)
     const startDate = new Date(earliestDate);
@@ -99,6 +108,7 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
       maxStreak: longestStreak,
       timeRange,
     });
+    setDataSeemsLimited(dataSeemsLimited);
   }, [data, longestStreak, totalProblemsSolved]);
 
   // Get color intensity based on count - using green colors
@@ -190,6 +200,11 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
         <p className="text-sm text-muted-foreground">
           Your coding activity across all platforms (lifetime)
         </p>
+        {dataSeemsLimited && (
+          <p className="text-xs text-muted-foreground mt-1 italic">
+            💡 Tip: Refresh your platform stats to load complete lifetime data from LeetCode and CodeChef
+          </p>
+        )}
       </div>
 
       <div className="relative">
