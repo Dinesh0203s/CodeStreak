@@ -60,16 +60,23 @@ const App = () => (
               <Route 
                 path="/admin" 
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireAdmin>
                     <AdminDashboard />
                   </ProtectedRoute>
                 } 
               />
-              <Route path="/dept-admin" element={<DeptAdminDashboard />} />
+              <Route 
+                path="/dept-admin" 
+                element={
+                  <ProtectedRoute requireDeptAdmin>
+                    <DeptAdminDashboard />
+                  </ProtectedRoute>
+                } 
+              />
               <Route 
                 path="/super-admin" 
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireSuperAdmin>
                     <SuperAdminDashboard />
                   </ProtectedRoute>
                 } 

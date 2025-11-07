@@ -114,7 +114,7 @@ const DeptAdminDashboard = () => {
       };
       if (studentSearchQuery) params.search = studentSearchQuery;
 
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       // Filter out admins and deptAdmins, only show regular users
       const filteredStudents = data.users.filter(s => s.role === 'user' || !s.role);
       setStudents(filteredStudents);
@@ -143,7 +143,7 @@ const DeptAdminDashboard = () => {
 
     try {
       setIsSubmitting(true);
-      await adminUpdateUser(editingStudent.firebaseUid, editStudentData);
+      await adminUpdateUser(currentUser.uid, editingStudent.firebaseUid, editStudentData);
       toast.success('Student updated successfully');
       setIsEditDialogOpen(false);
       setEditingStudent(null);

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import College from '../models/College.js';
+import { requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -28,8 +29,8 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Create new college
-router.post('/', async (req: Request, res: Response) => {
+// Create new college (superAdmin only)
+router.post('/', requireSuperAdmin, async (req: Request, res: Response) => {
   try {
     const { name, location, departments } = req.body;
 
@@ -58,8 +59,8 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// Update college
-router.put('/:id', async (req: Request, res: Response) => {
+// Update college (admin only)
+router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, location, departments } = req.body;
 
@@ -85,8 +86,8 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Ban/Unban college
-router.patch('/:id/ban', async (req: Request, res: Response) => {
+// Ban/Unban college (admin only)
+router.patch('/:id/ban', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { isBanned } = req.body;
 
@@ -107,8 +108,8 @@ router.patch('/:id/ban', async (req: Request, res: Response) => {
   }
 });
 
-// Delete college
-router.delete('/:id', async (req: Request, res: Response) => {
+// Delete college (superAdmin only)
+router.delete('/:id', requireSuperAdmin, async (req: Request, res: Response) => {
   try {
     const college = await College.findByIdAndDelete(req.params.id);
 
@@ -142,7 +143,7 @@ router.get('/:collegeName/departments', async (req: Request, res: Response) => {
 });
 
 // Add department to college (by college name - for admins)
-router.post('/:collegeName/departments', async (req: Request, res: Response) => {
+router.post('/:collegeName/departments', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { collegeName } = req.params;
     const { department } = req.body;
@@ -178,7 +179,7 @@ router.post('/:collegeName/departments', async (req: Request, res: Response) => 
 });
 
 // Update department in college (by college name - for admins)
-router.put('/:collegeName/departments/:oldName', async (req: Request, res: Response) => {
+router.put('/:collegeName/departments/:oldName', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { collegeName, oldName } = req.params;
     const { newName } = req.body;
@@ -216,7 +217,7 @@ router.put('/:collegeName/departments/:oldName', async (req: Request, res: Respo
 });
 
 // Delete department from college (by college name - for admins)
-router.delete('/:collegeName/departments/:departmentName', async (req: Request, res: Response) => {
+router.delete('/:collegeName/departments/:departmentName', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { collegeName, departmentName } = req.params;
 

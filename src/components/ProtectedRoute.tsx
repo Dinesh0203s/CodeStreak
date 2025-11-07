@@ -2,13 +2,23 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserByFirebaseUid } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireRegularUser?: boolean; // If true, redirect admins away
+  requireAdmin?: boolean; // If true, only allow admin or superAdmin
+  requireSuperAdmin?: boolean; // If true, only allow superAdmin
+  requireDeptAdmin?: boolean; // If true, only allow deptAdmin
 }
 
-export const ProtectedRoute = ({ children, requireRegularUser = false }: ProtectedRouteProps) => {
+export const ProtectedRoute = ({ 
+  children, 
+  requireRegularUser = false,
+  requireAdmin = false,
+  requireSuperAdmin = false,
+  requireDeptAdmin = false,
+}: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [checkingRole, setCheckingRole] = useState(true);
@@ -26,10 +36,33 @@ export const ProtectedRoute = ({ children, requireRegularUser = false }: Protect
 
       try {
         const userData = await getUserByFirebaseUid(user.uid);
-        
-        // Check if user has completed onboarding (unless they're an admin/superAdmin)
         const role = userData.role || 'user';
         
+        // Check role requirements first (most restrictive)
+        if (requireSuperAdmin) {
+          if (role !== 'superAdmin') {
+            toast.error('Access denied. Super Admin privileges required.');
+            navigate('/dashboard');
+            setCheckingRole(false);
+            return;
+          }
+        } else if (requireAdmin) {
+          if (role !== 'admin' && role !== 'superAdmin') {
+            toast.error('Access denied. Admin privileges required.');
+            navigate('/dashboard');
+            setCheckingRole(false);
+            return;
+          }
+        } else if (requireDeptAdmin) {
+          if (role !== 'deptAdmin' && role !== 'admin' && role !== 'superAdmin') {
+            toast.error('Access denied. Department Admin privileges required.');
+            navigate('/dashboard');
+            setCheckingRole(false);
+            return;
+          }
+        }
+        
+        // Check if user has completed onboarding (unless they're an admin/superAdmin)
         // Only check onboarding for regular users (not admins, superAdmins, or deptAdmins)
         // User is considered onboarded if:
         // 1. isOnboarded is explicitly true, OR
@@ -67,7 +100,7 @@ export const ProtectedRoute = ({ children, requireRegularUser = false }: Protect
     };
 
     checkUserRole();
-  }, [user, loading, navigate, requireRegularUser]);
+  }, [user, loading, navigate, requireRegularUser, requireAdmin, requireSuperAdmin, requireDeptAdmin]);
 
   if (loading || checkingRole) {
     return (

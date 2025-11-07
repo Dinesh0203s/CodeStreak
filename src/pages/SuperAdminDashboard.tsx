@@ -274,7 +274,7 @@ const SuperAdminDashboard = () => {
       if (userRoleFilter !== 'all') params.role = userRoleFilter;
       if (userCollegeFilter !== 'all') params.college = userCollegeFilter;
 
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       setUsers(data.users);
       setUserTotalPages(data.totalPages);
     } catch (error: any) {
@@ -309,7 +309,7 @@ const SuperAdminDashboard = () => {
 
     try {
       setIsSubmitting(true);
-      await adminUpdateUser(editingUser.firebaseUid, editUserData);
+      await adminUpdateUser(currentUser.uid, editingUser.firebaseUid, editUserData);
       toast.success('User updated successfully');
       setIsEditDialogOpen(false);
       setEditingUser(null);
@@ -347,7 +347,7 @@ const SuperAdminDashboard = () => {
 
     // For other roles, update directly
     try {
-      await updateUserRole(firebaseUid, newRole);
+      await updateUserRole(currentUser.uid, firebaseUid, newRole);
       toast.success('User role updated successfully');
       fetchUsers();
     } catch (error: any) {
@@ -366,6 +366,7 @@ const SuperAdminDashboard = () => {
 
     try {
       await updateUserRole(
+        currentUser.uid,
         roleChangeDialog.user.firebaseUid,
         roleChangeDialog.newRole,
         roleChangeDialog.selectedCollege || undefined
@@ -380,7 +381,7 @@ const SuperAdminDashboard = () => {
 
   const handleBanUser = async (firebaseUid: string, isBanned: boolean, userName: string) => {
     try {
-      await banUser(firebaseUid, isBanned);
+      await banUser(currentUser.uid, firebaseUid, isBanned);
       toast.success(`User "${userName}" ${isBanned ? 'banned' : 'unbanned'} successfully`);
       fetchUsers();
     } catch (error: any) {
@@ -480,7 +481,7 @@ const SuperAdminDashboard = () => {
       if (roleSearchQuery) params.search = roleSearchQuery;
       if (roleFilter !== 'all') params.role = roleFilter;
 
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       setRoleManagementUsers(data.users);
       setRoleTotalPages(data.totalPages);
     } catch (error: any) {
@@ -539,6 +540,7 @@ const SuperAdminDashboard = () => {
     try {
       setIsSubmitting(true);
       await updateUserRole(
+        currentUser.uid,
         roleAssignmentUser.firebaseUid,
         roleAssignmentData.role,
         roleAssignmentData.college || undefined,

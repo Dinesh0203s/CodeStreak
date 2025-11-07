@@ -328,7 +328,7 @@ const AdminDashboard = () => {
         college: adminCollege,
         role: 'deptAdmin',
       };
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       setDeptAdmins(data.users);
     } catch (error: any) {
       toast.error(error.message || 'Failed to load department admins');
@@ -345,7 +345,7 @@ const AdminDashboard = () => {
 
     try {
       setIsSubmitting(true);
-      await updateUserRole(deptAdminUser.firebaseUid, 'deptAdmin', adminCollege, selectedDeptForAdmin);
+      await updateUserRole(currentUser.uid, deptAdminUser.firebaseUid, 'deptAdmin', adminCollege, selectedDeptForAdmin);
       toast.success('Department admin assigned successfully');
       setIsDeptAdminDialogOpen(false);
       setDeptAdminUser(null);
@@ -361,7 +361,7 @@ const AdminDashboard = () => {
 
   const handleRemoveDeptAdmin = async (firebaseUid: string, userName: string) => {
     try {
-      await updateUserRole(firebaseUid, 'user');
+      await updateUserRole(currentUser.uid, firebaseUid, 'user');
       toast.success(`Department admin role removed from ${userName}`);
       await fetchDeptAdmins();
     } catch (error: any) {
@@ -379,7 +379,7 @@ const AdminDashboard = () => {
         limit: 200,
         college: adminCollege,
       };
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       // Filter to only regular users (not admins, superAdmins, or deptAdmins)
       const users = data.users.filter(u => u.role === 'user' || !u.role);
       setAvailableUsers(users);
@@ -410,7 +410,7 @@ const AdminDashboard = () => {
       };
       if (studentSearchQuery) params.search = studentSearchQuery;
 
-      const data = await getAllUsers(params);
+      const data = await getAllUsers(currentUser.uid, params);
       setStudents(data.users);
       setStudentTotalPages(data.totalPages);
     } catch (error: any) {
@@ -437,7 +437,7 @@ const AdminDashboard = () => {
 
     try {
       setIsSubmitting(true);
-      await adminUpdateUser(editingStudent.firebaseUid, editStudentData);
+      await adminUpdateUser(currentUser.uid, editingStudent.firebaseUid, editStudentData);
       toast.success('Student updated successfully');
       setIsEditDialogOpen(false);
       setEditingStudent(null);

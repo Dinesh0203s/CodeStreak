@@ -595,14 +595,17 @@ export const refreshUserStats = async (firebaseUid: string): Promise<User> => {
 
 // User Management API (for admins)
 // Get all users with optional filters
-export const getAllUsers = async (params?: {
-  college?: string;
-  role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
-  department?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-}): Promise<{
+export const getAllUsers = async (
+  callerFirebaseUid: string,
+  params?: {
+    college?: string;
+    role?: 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+    department?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }
+): Promise<{
   users: User[];
   total: number;
   page: number;
@@ -617,6 +620,7 @@ export const getAllUsers = async (params?: {
     if (params?.search) queryParams.append('search', params.search);
     if (params?.page) queryParams.append('page', String(params.page));
     if (params?.limit) queryParams.append('limit', String(params.limit));
+    queryParams.append('callerFirebaseUid', callerFirebaseUid);
 
     const response = await fetch(`${API_BASE_URL}/users?${queryParams}`);
     await handleFetchError(response, 'Failed to fetch users');
@@ -631,13 +635,14 @@ export const getAllUsers = async (params?: {
 
 // Update user role
 export const updateUserRole = async (
+  callerFirebaseUid: string,
   firebaseUid: string, 
   role: 'user' | 'admin' | 'superAdmin' | 'deptAdmin',
   college?: string,
   department?: string
 ): Promise<User> => {
   try {
-    const body: any = { role };
+    const body: any = { role, callerFirebaseUid };
     if (role === 'admin' && college) {
       body.college = college;
     }
@@ -664,14 +669,14 @@ export const updateUserRole = async (
 };
 
 // Ban/Unban user
-export const banUser = async (firebaseUid: string, isBanned: boolean): Promise<User> => {
+export const banUser = async (callerFirebaseUid: string, firebaseUid: string, isBanned: boolean): Promise<User> => {
   try {
     const response = await fetch(`${API_BASE_URL}/users/${firebaseUid}/ban`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ isBanned }),
+      body: JSON.stringify({ isBanned, callerFirebaseUid }),
     });
     await handleFetchError(response, 'Failed to update user ban status');
     return response.json();
@@ -685,6 +690,7 @@ export const banUser = async (firebaseUid: string, isBanned: boolean): Promise<U
 
 // Admin update user (for super admin and admin)
 export const adminUpdateUser = async (
+  callerFirebaseUid: string,
   firebaseUid: string,
   userData: {
     fullName?: string;
@@ -702,7 +708,7 @@ export const adminUpdateUser = async (
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(userData),
+      body: JSON.stringify({ ...userData, callerFirebaseUid }),
     });
     await handleFetchError(response, 'Failed to update user');
     return response.json();

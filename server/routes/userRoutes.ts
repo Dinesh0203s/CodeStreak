@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import ActivityHeatmap from '../models/ActivityHeatmap.js';
 import ExternalSubmission from '../models/ExternalSubmission.js';
 import Submission from '../models/Submission.js';
+import { requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -107,7 +108,7 @@ router.get('/:firebaseUid', async (req: Request, res: Response) => {
 });
 
 // Get all users (for admin) with filtering and pagination
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { college, role, department, search, page = '1', limit = '50' } = req.query;
     const pageNum = parseInt(page as string, 10);
@@ -155,8 +156,8 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Update user role (admin only)
-router.patch('/:firebaseUid/role', async (req: Request, res: Response) => {
+// Update user role (admin only) - only superAdmin can assign admin/superAdmin roles
+router.patch('/:firebaseUid/role', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { firebaseUid } = req.params;
     const { role, college } = req.body;
@@ -209,7 +210,7 @@ router.patch('/:firebaseUid/role', async (req: Request, res: Response) => {
 });
 
 // Ban/Unban user (admin only)
-router.patch('/:firebaseUid/ban', async (req: Request, res: Response) => {
+router.patch('/:firebaseUid/ban', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { firebaseUid } = req.params;
     const { isBanned } = req.body;
@@ -237,7 +238,7 @@ router.patch('/:firebaseUid/ban', async (req: Request, res: Response) => {
 });
 
 // Admin update user (admin only - can update any field)
-router.put('/:firebaseUid/admin', async (req: Request, res: Response) => {
+router.put('/:firebaseUid/admin', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { firebaseUid } = req.params;
     const { fullName, college, department, passoutYear, leetcodeHandle, codechefHandle, role } = req.body;
