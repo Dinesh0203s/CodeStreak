@@ -9,34 +9,73 @@ interface HeatMapData {
 
 interface HeatMapProps {
   data: HeatMapData[];
+  longestStreak?: number;
+  totalProblemsSolved?: number;
 }
 
-export const HeatMap = ({ data }: HeatMapProps) => {
+export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: HeatMapProps) => {
   const [heatmapCells, setHeatmapCells] = useState<Array<{ date: Date; count: number; dayOfWeek: number }>>([]);
+  const [stats, setStats] = useState({
+    totalSubmissions: 0,
+    activeDays: 0,
+    maxStreak: longestStreak,
+    timeRange: '',
+  });
 
   useEffect(() => {
     // Create a map of date strings to counts
     const dataMap = new Map<string, number>();
+    let totalSubmissions = 0;
+    let activeDays = 0;
+    
     data.forEach((item) => {
       dataMap.set(item.date, item.count);
+      totalSubmissions += item.count;
+      if (item.count > 0) activeDays++;
     });
 
-    // Generate cells for the last 365 days (or 53 weeks)
-    const cells: Array<{ date: Date; count: number; dayOfWeek: number }> = [];
+    // Find the earliest and latest dates from the data
+    const dates = data.map(item => new Date(item.date)).filter(d => !isNaN(d.getTime())).sort((a, b) => a.getTime() - b.getTime());
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    // If no valid dates, use last year as default
+    const earliestDate = dates.length > 0 ? dates[0] : new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+    earliestDate.setHours(0, 0, 0, 0);
 
-    // Start from 365 days ago
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - 365);
+    // Calculate time range (in months)
+    const monthsDiff = (today.getFullYear() - earliestDate.getFullYear()) * 12 + (today.getMonth() - earliestDate.getMonth());
+    const years = Math.floor(monthsDiff / 12);
+    const months = monthsDiff % 12;
+    
+    let timeRange = '';
+    if (years > 0) {
+      timeRange = `${years} year${years > 1 ? 's' : ''}`;
+      if (months > 0) {
+        timeRange += ` ${months} month${months > 1 ? 's' : ''}`;
+      }
+    } else if (monthsDiff > 0) {
+      timeRange = `${monthsDiff} month${monthsDiff > 1 ? 's' : ''}`;
+    } else {
+      timeRange = 'lifetime';
+    }
+
+    // Use the earliest date from data for lifetime stats (no limit)
+    const startDate = new Date(earliestDate);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Calculate total days from start to today
+    const totalDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Find the first Sunday before or on startDate
     const firstSunday = new Date(startDate);
     const dayOfWeek = firstSunday.getDay();
     firstSunday.setDate(firstSunday.getDate() - dayOfWeek);
 
-    // Generate cells for each day
-    for (let i = 0; i < 365; i++) {
+    // Generate cells for ALL days from startDate to today
+    const cells: Array<{ date: Date; count: number; dayOfWeek: number }> = [];
+    
+    for (let i = 0; i < totalDays + 7; i++) {
       const currentDate = new Date(firstSunday);
       currentDate.setDate(firstSunday.getDate() + i);
 
@@ -54,7 +93,13 @@ export const HeatMap = ({ data }: HeatMapProps) => {
     }
 
     setHeatmapCells(cells);
-  }, [data]);
+    setStats({
+      totalSubmissions: totalProblemsSolved || totalSubmissions, // Use totalProblemsSolved if provided (includes all sources), otherwise sum from heatmap
+      activeDays,
+      maxStreak: longestStreak,
+      timeRange,
+    });
+  }, [data, longestStreak, totalProblemsSolved]);
 
   // Get color intensity based on count - using green colors
   const getColor = (count: number): string => {
@@ -121,15 +166,30 @@ export const HeatMap = ({ data }: HeatMapProps) => {
   return (
     <Card className="p-6">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-2">Activity Heat Map</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold">Activity Heat Map</h3>
+        </div>
+        
+        {/* Statistics */}
+        <div className="flex flex-wrap items-center gap-4 mb-3 text-sm">
+          <div className="font-medium">
+            {stats.totalSubmissions} submission{stats.totalSubmissions !== 1 ? 's' : ''} {stats.timeRange ? `in the past ${stats.timeRange}` : ''}
+          </div>
+          <div>
+            <span className="text-muted-foreground">
+              Total active days: <span className="font-medium text-foreground">{stats.activeDays}</span>
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">
+              Max streak: <span className="font-medium text-foreground">{stats.maxStreak}</span>
+            </span>
+          </div>
+        </div>
+        
         <p className="text-sm text-muted-foreground">
-          Your coding activity over the past year
+          Your coding activity across all platforms (lifetime)
         </p>
-        {data.length > 0 && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Showing {data.length} days with activity
-          </p>
-        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -186,16 +246,21 @@ export const HeatMap = ({ data }: HeatMapProps) => {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-6 text-xs text-muted-foreground">
-        <span className="text-xs">Less</span>
-        <div className="flex gap-1.5">
-          <div className="w-3.5 h-3.5 bg-muted border border-border/30" />
-          <div className="w-3.5 h-3.5 bg-green-300 border border-border/30" />
-          <div className="w-3.5 h-3.5 bg-green-400 border border-border/30" />
-          <div className="w-3.5 h-3.5 bg-green-500 border border-border/30" />
-          <div className="w-3.5 h-3.5 bg-green-600 border border-border/30" />
+      <div className="flex items-center justify-between mt-6">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="text-xs">Less</span>
+          <div className="flex gap-1.5">
+            <div className="w-3.5 h-3.5 bg-muted border border-border/30" />
+            <div className="w-3.5 h-3.5 bg-green-300 border border-border/30" />
+            <div className="w-3.5 h-3.5 bg-green-400 border border-border/30" />
+            <div className="w-3.5 h-3.5 bg-green-500 border border-border/30" />
+            <div className="w-3.5 h-3.5 bg-green-600 border border-border/30" />
+          </div>
+          <span className="text-xs">More</span>
         </div>
-        <span className="text-xs">More</span>
+        <div className="text-xs text-muted-foreground">
+          Includes: App challenges, LeetCode, CodeChef
+        </div>
       </div>
     </Card>
   );

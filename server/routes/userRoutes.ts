@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import axios from 'axios';
 import User from '../models/User.js';
 import ActivityHeatmap from '../models/ActivityHeatmap.js';
+import ExternalSubmission from '../models/ExternalSubmission.js';
+import Submission from '../models/Submission.js';
 
 const router = express.Router();
 
@@ -293,15 +295,48 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
           timeout: 15000,
         });
         
-        // Get submission dates
+        // Get submission dates and detailed submissions
         let submissionDates: Array<{ date: string; count: number }> = [];
+        let detailedSubmissions: any[] = [];
         try {
-          const submissionsResponse = await axios.get(`${API_BASE_URL}/scrape/leetcode/${user.leetcodeHandle}/submissions?limit=1000`, {
-            timeout: 20000,
+          const submissionsResponse = await axios.get(`${API_BASE_URL}/scrape/leetcode/${user.leetcodeHandle}/submissions?limit=20000`, {
+            timeout: 30000,
           });
           if (submissionsResponse.data && submissionsResponse.data.success) {
             submissionDates = submissionsResponse.data.submissionDates || [];
+            detailedSubmissions = submissionsResponse.data.detailedSubmissions || [];
             console.log(`Scraped ${submissionDates.length} unique days of LeetCode submission activity (${submissionsResponse.data.totalSubmissions} total submissions)`);
+            
+            // Store detailed submissions in database
+            if (detailedSubmissions.length > 0) {
+              const bulkOps = detailedSubmissions.map((submission: any) => ({
+                updateOne: {
+                  filter: {
+                    firebaseUid,
+                    platform: 'leetcode',
+                    submissionId: submission.submissionId,
+                  },
+                  update: {
+                    $set: {
+                      userId: user._id,
+                      firebaseUid,
+                      platform: 'leetcode',
+                      problemTitle: submission.problemTitle,
+                      problemSlug: submission.problemSlug,
+                      problemUrl: submission.problemUrl,
+                      submissionId: submission.submissionId,
+                      timestamp: submission.timestamp,
+                      language: submission.language,
+                      status: submission.status,
+                    },
+                  },
+                  upsert: true,
+                },
+              }));
+              
+              await ExternalSubmission.bulkWrite(bulkOps);
+              console.log(`Stored ${detailedSubmissions.length} LeetCode submissions in database`);
+            }
           }
         } catch (subError: any) {
           console.error('Error scraping LeetCode submissions:', subError.message);
@@ -425,6 +460,85 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
       }
     }
 
+    // Calculate longest streak from ActivityHeatmap
+    const calculateLongestStreak = async (firebaseUid: string): Promise<number> => {
+      const activities = await ActivityHeatmap.find({ firebaseUid })
+        .select('date dateKey')
+        .sort({ date: 1 });
+      
+      if (activities.length === 0) return 0;
+      
+      let longestStreak = 0;
+      let currentStreak = 0;
+      let lastDate: Date | null = null;
+      
+      for (const activity of activities) {
+        const currentDate = new Date(activity.date);
+        currentDate.setHours(0, 0, 0, 0);
+        
+        if (!lastDate) {
+          currentStreak = 1;
+          lastDate = currentDate;
+        } else {
+          const daysDiff = Math.floor(
+            (currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          
+          if (daysDiff === 1) {
+            // Consecutive day
+            currentStreak++;
+          } else if (daysDiff > 1) {
+            // Streak broken, start over
+            longestStreak = Math.max(longestStreak, currentStreak);
+            currentStreak = 1;
+          }
+          // If daysDiff === 0, same day, don't increment streak
+          
+          lastDate = currentDate;
+        }
+      }
+      
+      // Check final streak
+      longestStreak = Math.max(longestStreak, currentStreak);
+      
+      return longestStreak;
+    };
+
+    // Calculate total problems solved from all sources
+    const calculateTotalProblemsSolved = async (firebaseUid: string, user: any): Promise<number> => {
+      let total = 0;
+
+      // 1. Count app submissions (from Submission collection)
+      const appSubmissionsCount = await Submission.countDocuments({ firebaseUid });
+      total += appSubmissionsCount;
+
+      // 2. Add LeetCode solved problems (from leetcodeStats)
+      if (user.leetcodeStats?.solvedProblems) {
+        total += user.leetcodeStats.solvedProblems;
+      }
+
+      // 3. Add CodeChef solved problems (from codechefStats)
+      if (user.codechefStats?.problemsSolved) {
+        total += user.codechefStats.problemsSolved;
+      }
+
+      return total;
+    };
+
+    // Recalculate longest streak
+    const longestStreak = await calculateLongestStreak(firebaseUid);
+    updateData.longestStreak = longestStreak;
+
+    // Recalculate total problems solved (will be updated after user is updated with new stats)
+    const updatedUserWithStats = await User.findOne({ firebaseUid });
+    if (updatedUserWithStats) {
+      const totalProblemsSolved = await calculateTotalProblemsSolved(firebaseUid, {
+        ...updatedUserWithStats.toObject(),
+        ...updateData,
+      });
+      updateData.totalProblemsSolved = totalProblemsSolved;
+    }
+
     // Update user with scraped data
     if (Object.keys(updateData).length > 0) {
       const updatedUser = await User.findOneAndUpdate(
@@ -437,6 +551,8 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
         success: true,
         message: 'Stats refreshed successfully',
         user: updatedUser,
+        longestStreak,
+        totalProblemsSolved: updatedUser.totalProblemsSolved,
       });
     } else {
       return res.json({

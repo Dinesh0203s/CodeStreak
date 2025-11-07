@@ -235,7 +235,11 @@ const Dashboard = () => {
             </Card>
 
             {/* Activity Heat Map */}
-            <HeatMap data={heatmapData} />
+            <HeatMap 
+              data={heatmapData} 
+              longestStreak={stats?.longestStreak || 0}
+              totalProblemsSolved={stats?.totalSolved || 0}
+            />
 
             {/* Platform Stats */}
             <div className="grid md:grid-cols-2 gap-6">

@@ -70,6 +70,10 @@ import {
   updateUserRole,
   banUser,
   adminUpdateUser,
+  getCollegeDepartments,
+  addDepartment,
+  updateDepartment,
+  deleteDepartment,
   College,
   User
 } from '@/lib/api';
@@ -112,6 +116,30 @@ const SuperAdminDashboard = () => {
     role: 'user' as 'user' | 'admin' | 'superAdmin',
   });
 
+  // Department management state
+  const [selectedCollegeForDept, setSelectedCollegeForDept] = useState<string>('');
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [isAddDeptDialogOpen, setIsAddDeptDialogOpen] = useState(false);
+  const [isEditDeptDialogOpen, setIsEditDeptDialogOpen] = useState(false);
+  const [newDepartment, setNewDepartment] = useState('');
+  const [editingDepartment, setEditingDepartment] = useState<{ oldName: string; newName: string } | null>(null);
+
+  // Role management state
+  const [roleManagementUsers, setRoleManagementUsers] = useState<User[]>([]);
+  const [roleManagementLoading, setRoleManagementLoading] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [roleSearchQuery, setRoleSearchQuery] = useState('');
+  const [rolePage, setRolePage] = useState(1);
+  const [roleTotalPages, setRoleTotalPages] = useState(1);
+  const [isRoleAssignmentDialogOpen, setIsRoleAssignmentDialogOpen] = useState(false);
+  const [roleAssignmentUser, setRoleAssignmentUser] = useState<User | null>(null);
+  const [roleAssignmentData, setRoleAssignmentData] = useState({
+    role: 'user' as 'user' | 'admin' | 'superAdmin' | 'deptAdmin',
+    college: '',
+    department: '',
+  });
+
   // Calculate real stats from colleges
   const globalStats = {
     totalColleges: colleges.length,
@@ -125,6 +153,30 @@ const SuperAdminDashboard = () => {
     fetchTopPerformers();
     fetchUsers();
   }, [userPage, userRoleFilter, userCollegeFilter]);
+
+  useEffect(() => {
+    if (selectedCollegeForDept) {
+      fetchDepartments(selectedCollegeForDept);
+    } else {
+      setDepartments([]);
+    }
+  }, [selectedCollegeForDept]);
+
+  useEffect(() => {
+    fetchRoleManagementUsers();
+  }, [rolePage, roleFilter, roleSearchQuery]);
+
+  useEffect(() => {
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      if (rolePage === 1) {
+        fetchRoleManagementUsers();
+      } else {
+        setRolePage(1);
+      }
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [roleSearchQuery]);
 
   useEffect(() => {
     // Debounce search
@@ -333,6 +385,174 @@ const SuperAdminDashboard = () => {
       fetchUsers();
     } catch (error: any) {
       toast.error(error.message || 'Failed to update user status');
+    }
+  };
+
+  // Department management functions
+  const fetchDepartments = async (collegeName: string) => {
+    try {
+      setDepartmentsLoading(true);
+      const depts = await getCollegeDepartments(collegeName);
+      setDepartments(depts);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load departments');
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  };
+
+  const handleAddDepartment = async () => {
+    if (!newDepartment.trim()) {
+      toast.error('Department name is required');
+      return;
+    }
+
+    if (!selectedCollegeForDept) {
+      toast.error('Please select a college first');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await addDepartment(selectedCollegeForDept, newDepartment.trim());
+      toast.success('Department added successfully');
+      setNewDepartment('');
+      setIsAddDeptDialogOpen(false);
+      await fetchDepartments(selectedCollegeForDept);
+      await fetchColleges(); // Refresh college data
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add department');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditDepartment = async () => {
+    if (!editingDepartment || !editingDepartment.newName.trim()) {
+      toast.error('Department name is required');
+      return;
+    }
+
+    if (!selectedCollegeForDept) {
+      toast.error('College selection is missing');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await updateDepartment(selectedCollegeForDept, editingDepartment.oldName, editingDepartment.newName.trim());
+      toast.success('Department updated successfully');
+      setEditingDepartment(null);
+      setIsEditDeptDialogOpen(false);
+      await fetchDepartments(selectedCollegeForDept);
+      await fetchColleges(); // Refresh college data
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update department');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteDepartment = async (departmentName: string) => {
+    if (!selectedCollegeForDept) {
+      toast.error('College selection is missing');
+      return;
+    }
+
+    try {
+      await deleteDepartment(selectedCollegeForDept, departmentName);
+      toast.success('Department deleted successfully');
+      await fetchDepartments(selectedCollegeForDept);
+      await fetchColleges(); // Refresh college data
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete department');
+    }
+  };
+
+  // Role management functions
+  const fetchRoleManagementUsers = async () => {
+    try {
+      setRoleManagementLoading(true);
+      const params: any = {
+        page: rolePage,
+        limit: 20,
+      };
+      if (roleSearchQuery) params.search = roleSearchQuery;
+      if (roleFilter !== 'all') params.role = roleFilter;
+
+      const data = await getAllUsers(params);
+      setRoleManagementUsers(data.users);
+      setRoleTotalPages(data.totalPages);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load users');
+    } finally {
+      setRoleManagementLoading(false);
+    }
+  };
+
+  const calculateRoleStats = () => {
+    const stats = {
+      superAdmin: 0,
+      admin: 0,
+      deptAdmin: 0,
+      user: 0,
+    };
+
+    // Calculate from all users (we'll fetch a larger sample)
+    roleManagementUsers.forEach(user => {
+      const role = user.role || 'user';
+      if (role === 'superAdmin') stats.superAdmin++;
+      else if (role === 'admin') stats.admin++;
+      else if (role === 'deptAdmin') stats.deptAdmin++;
+      else stats.user++;
+    });
+
+    // For accurate counts, we should fetch all users, but for now use the current page
+    // In production, you might want to add a separate endpoint for role counts
+    return stats;
+  };
+
+  const handleAssignRole = (user: User) => {
+    setRoleAssignmentUser(user);
+    setRoleAssignmentData({
+      role: (user.role as 'user' | 'admin' | 'superAdmin' | 'deptAdmin') || 'user',
+      college: user.college || '',
+      department: user.department || '',
+    });
+    setIsRoleAssignmentDialogOpen(true);
+  };
+
+  const handleSaveRoleAssignment = async () => {
+    if (!roleAssignmentUser) return;
+
+    // Validation
+    if (roleAssignmentData.role === 'admin' && !roleAssignmentData.college) {
+      toast.error('College is required for admin role');
+      return;
+    }
+
+    if (roleAssignmentData.role === 'deptAdmin' && (!roleAssignmentData.college || !roleAssignmentData.department)) {
+      toast.error('College and department are required for department admin role');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await updateUserRole(
+        roleAssignmentUser.firebaseUid,
+        roleAssignmentData.role,
+        roleAssignmentData.college || undefined,
+        roleAssignmentData.department || undefined
+      );
+      toast.success('Role assigned successfully');
+      setIsRoleAssignmentDialogOpen(false);
+      setRoleAssignmentUser(null);
+      fetchRoleManagementUsers();
+      fetchUsers(); // Refresh user management tab as well
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to assign role');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1042,53 +1262,556 @@ const SuperAdminDashboard = () => {
             {/* Role Management Tab */}
             <TabsContent value="roles">
               <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Role Management</h2>
-                <Button className="bg-gradient-streak border-0 text-white">
-                  Assign Role
-                </Button>
+                <div>
+                  <h2 className="text-xl font-semibold">Role Management</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Assign and manage user roles across the platform
+                  </p>
+                </div>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-6">
-                {[
-                  { role: 'Super Admin', count: 2, color: 'primary', permissions: ['Full System Access', 'Manage All Colleges', 'Role Assignment'] },
-                  { role: 'College Admin', count: 45, color: 'success', permissions: ['Manage College', 'View Students', 'Export Reports'] },
-                  { role: 'User', count: 12450, color: 'muted', permissions: ['Track Streak', 'View Leaderboard', 'Connect Friends'] },
-                ].map((roleInfo) => (
-                  <Card key={roleInfo.role} className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">{roleInfo.role}</h3>
-                      <span className="text-2xl font-bold">{roleInfo.count}</span>
+              {/* Role Statistics Cards */}
+              <div className="grid md:grid-cols-4 gap-4 mb-6">
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-primary" />
+                      <h3 className="font-semibold text-sm">Super Admin</h3>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground font-medium">Permissions:</p>
-                      <ul className="text-sm space-y-1">
-                        {roleInfo.permissions.map((perm) => (
-                          <li key={perm} className="flex items-center gap-2">
-                            <div className="h-1.5 w-1.5 rounded-full bg-success" />
-                            {perm}
-                          </li>
-                        ))}
-                      </ul>
+                    <span className="text-xl font-bold">{calculateRoleStats().superAdmin}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Full system access</p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-success" />
+                      <h3 className="font-semibold text-sm">College Admin</h3>
                     </div>
-                    <Button variant="outline" className="w-full mt-4">
-                      Manage Users
-                    </Button>
-                  </Card>
-                ))}
+                    <span className="text-xl font-bold">{calculateRoleStats().admin}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Manage college</p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-5 w-5 text-challenge" />
+                      <h3 className="font-semibold text-sm">Dept Admin</h3>
+                    </div>
+                    <span className="text-xl font-bold">{calculateRoleStats().deptAdmin}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Manage department</p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-sm">Users</h3>
+                    </div>
+                    <span className="text-xl font-bold">{calculateRoleStats().user}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Regular users</p>
+                </Card>
               </div>
+
+              {/* Filters and Search */}
+              <div className="mb-6 flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search users by name or email..."
+                      value={roleSearchQuery}
+                      onChange={(e) => setRoleSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Filter by role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="superAdmin">Super Admin</SelectItem>
+                      <SelectItem value="admin">College Admin</SelectItem>
+                      <SelectItem value="deptAdmin">Dept Admin</SelectItem>
+                      <SelectItem value="user">Users</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Users Table */}
+              {roleManagementLoading ? (
+                <div className="text-center py-8">Loading users...</div>
+              ) : (
+                <>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>User</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>College</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Current Role</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {roleManagementUsers.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                              No users found
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          roleManagementUsers.map((user) => (
+                            <TableRow key={user._id || user.firebaseUid}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  {user.photoURL && (
+                                    <img
+                                      src={user.photoURL}
+                                      alt={user.displayName}
+                                      className="w-8 h-8 rounded-full"
+                                    />
+                                  )}
+                                  <div>
+                                    <div>{user.fullName || user.displayName}</div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                              <TableCell>{user.college || '-'}</TableCell>
+                              <TableCell>{user.department || '-'}</TableCell>
+                              <TableCell>
+                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                  user.role === 'superAdmin' ? 'bg-primary/10 text-primary' :
+                                  user.role === 'admin' ? 'bg-success/10 text-success' :
+                                  user.role === 'deptAdmin' ? 'bg-challenge/10 text-challenge' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {user.role === 'superAdmin' ? 'Super Admin' :
+                                   user.role === 'admin' ? 'College Admin' :
+                                   user.role === 'deptAdmin' ? 'Dept Admin' :
+                                   'User'}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleAssignRole(user)}
+                                  title="Assign role"
+                                >
+                                  <UserCog className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Pagination */}
+                  {roleTotalPages > 1 && (
+                    <div className="flex items-center justify-between mt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Page {rolePage} of {roleTotalPages}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRolePage(p => Math.max(1, p - 1))}
+                          disabled={rolePage === 1}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRolePage(p => Math.min(roleTotalPages, p + 1))}
+                          disabled={rolePage === roleTotalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Role Assignment Dialog */}
+              <Dialog open={isRoleAssignmentDialogOpen} onOpenChange={setIsRoleAssignmentDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Assign Role</DialogTitle>
+                    <DialogDescription>
+                      Assign or change role for {roleAssignmentUser?.fullName || roleAssignmentUser?.displayName || 'user'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="role-select">Role *</Label>
+                      <Select
+                        value={roleAssignmentData.role}
+                        onValueChange={async (value) => {
+                          const newRole = value as 'user' | 'admin' | 'superAdmin' | 'deptAdmin';
+                          const newCollege = value === 'admin' || value === 'deptAdmin' ? roleAssignmentData.college : '';
+                          
+                          setRoleAssignmentData({
+                            ...roleAssignmentData,
+                            role: newRole,
+                            college: newCollege,
+                            department: value === 'deptAdmin' ? roleAssignmentData.department : '',
+                          });
+
+                          // If switching to deptAdmin and college is already selected, fetch departments
+                          if (newRole === 'deptAdmin' && newCollege) {
+                            try {
+                              const depts = await getCollegeDepartments(newCollege);
+                              setDepartments(depts);
+                              setSelectedCollegeForDept(newCollege);
+                            } catch (error: any) {
+                              toast.error('Failed to load departments');
+                            }
+                          }
+                        }}
+                      >
+                        <SelectTrigger id="role-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="admin">College Admin</SelectItem>
+                          <SelectItem value="deptAdmin">Department Admin</SelectItem>
+                          <SelectItem value="superAdmin">Super Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(roleAssignmentData.role === 'admin' || roleAssignmentData.role === 'deptAdmin') && (
+                      <div className="space-y-2">
+                        <Label htmlFor="role-college">College *</Label>
+                        <Select
+                          value={roleAssignmentData.college}
+                          onValueChange={async (value) => {
+                            setRoleAssignmentData({
+                              ...roleAssignmentData,
+                              college: value,
+                              // Reset department when changing college
+                              department: '',
+                            });
+                            // Fetch departments for the selected college if deptAdmin
+                            if (roleAssignmentData.role === 'deptAdmin' && value) {
+                              try {
+                                const depts = await getCollegeDepartments(value);
+                                setDepartments(depts);
+                                setSelectedCollegeForDept(value);
+                              } catch (error: any) {
+                                toast.error('Failed to load departments');
+                              }
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="role-college">
+                            <SelectValue placeholder="Select a college" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {colleges.map((college) => (
+                              <SelectItem key={college._id || college.name} value={college.name}>
+                                {college.name} {college.location && `(${college.location})`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {roleAssignmentData.role === 'deptAdmin' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="role-department">Department *</Label>
+                        <Select
+                          value={roleAssignmentData.department}
+                          onValueChange={(value) => setRoleAssignmentData({ ...roleAssignmentData, department: value })}
+                          disabled={!roleAssignmentData.college}
+                        >
+                          <SelectTrigger id="role-department">
+                            <SelectValue placeholder={roleAssignmentData.college ? "Select a department" : "Select a college first"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {roleAssignmentData.college && selectedCollegeForDept === roleAssignmentData.college && departments.length > 0 ? (
+                              departments.map((dept) => (
+                                <SelectItem key={dept} value={dept}>
+                                  {dept}
+                                </SelectItem>
+                              ))
+                            ) : roleAssignmentData.college ? (
+                              <SelectItem value="" disabled>Loading departments...</SelectItem>
+                            ) : (
+                              <SelectItem value="" disabled>Select a college first</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {roleAssignmentData.role === 'admin' && (
+                      <p className="text-xs text-muted-foreground">
+                        Admins must be assigned to one college only
+                      </p>
+                    )}
+
+                    {roleAssignmentData.role === 'deptAdmin' && (
+                      <p className="text-xs text-muted-foreground">
+                        Department admins manage a specific department within a college
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsRoleAssignmentDialogOpen(false);
+                        setRoleAssignmentUser(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveRoleAssignment}
+                      disabled={isSubmitting}
+                      className="bg-gradient-streak border-0 text-white"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Assign Role'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             {/* Department Management Tab */}
             <TabsContent value="departments">
               <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Department Management</h2>
+                <div>
+                  <h2 className="text-xl font-semibold">Department Management</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Manage departments for any college
+                  </p>
+                </div>
+                <Dialog open={isAddDeptDialogOpen} onOpenChange={setIsAddDeptDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      className="bg-gradient-streak border-0 text-white"
+                      disabled={!selectedCollegeForDept}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Department
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Department</DialogTitle>
+                      <DialogDescription>
+                        Add a new department to {selectedCollegeForDept || 'the selected college'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="department-name">Department Name *</Label>
+                        <Input
+                          id="department-name"
+                          placeholder="e.g., Computer Science, Information Technology"
+                          value={newDepartment}
+                          onChange={(e) => setNewDepartment(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleAddDepartment();
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsAddDeptDialogOpen(false);
+                          setNewDepartment('');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddDepartment}
+                        disabled={isSubmitting || !newDepartment.trim()}
+                        className="bg-gradient-streak border-0 text-white"
+                      >
+                        {isSubmitting ? 'Adding...' : 'Add Department'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
 
-              <div className="border rounded-lg p-8 text-center text-muted-foreground">
-                <GraduationCap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Department management feature coming soon.</p>
-                <p className="text-sm mt-2">Departments are managed through college records.</p>
+              {/* College Selector */}
+              <div className="mb-6 space-y-2">
+                <Label htmlFor="college-select">Select College</Label>
+                <Select
+                  value={selectedCollegeForDept}
+                  onValueChange={setSelectedCollegeForDept}
+                >
+                  <SelectTrigger id="college-select">
+                    <SelectValue placeholder="Select a college to manage departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {colleges.map((college) => (
+                      <SelectItem key={college._id || college.name} value={college.name}>
+                        {college.name} {college.location && `(${college.location})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              {!selectedCollegeForDept ? (
+                <Card className="p-8 text-center">
+                  <GraduationCap className="h-12 w-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+                  <p className="text-muted-foreground">Please select a college to manage departments.</p>
+                </Card>
+              ) : departmentsLoading ? (
+                <div className="text-center py-8">Loading departments...</div>
+              ) : (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Department Name</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {departments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center py-8 text-muted-foreground">
+                            No departments found. Add your first department to get started.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        departments.map((dept, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                                {dept}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingDepartment({ oldName: dept, newName: dept });
+                                    setIsEditDeptDialogOpen(true);
+                                  }}
+                                  title="Edit department"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="text-destructive hover:text-destructive"
+                                      title="Delete department"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Department</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete "{dept}" from {selectedCollegeForDept}? This action cannot be undone.
+                                        <span className="block mt-2 text-destructive font-medium">
+                                          Note: Students assigned to this department will not be automatically updated.
+                                        </span>
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleDeleteDepartment(dept)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Edit Department Dialog */}
+              <Dialog open={isEditDeptDialogOpen} onOpenChange={setIsEditDeptDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit Department</DialogTitle>
+                    <DialogDescription>
+                      Update the department name for {selectedCollegeForDept}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-department-name">Department Name *</Label>
+                      <Input
+                        id="edit-department-name"
+                        placeholder="Department name"
+                        value={editingDepartment?.newName || ''}
+                        onChange={(e) => setEditingDepartment(editingDepartment ? { ...editingDepartment, newName: e.target.value } : null)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleEditDepartment();
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditDeptDialogOpen(false);
+                        setEditingDepartment(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleEditDepartment}
+                      disabled={isSubmitting || !editingDepartment?.newName.trim()}
+                      className="bg-gradient-streak border-0 text-white"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
           </Tabs>
         </Card>

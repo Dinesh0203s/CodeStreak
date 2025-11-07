@@ -412,8 +412,8 @@ router.get('/codechef/:username', async (req: Request, res: Response) => {
 router.get('/leetcode/:username/submissions', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    // Fetch maximum submissions (LeetCode allows up to 1000 in recent submissions)
-    const limit = parseInt(req.query.limit as string) || 1000;
+    // Fetch maximum submissions (LeetCode allows up to 20000 in recent submissions)
+    const limit = parseInt(req.query.limit as string) || 20000;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
@@ -456,14 +456,25 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
         // Group ALL submissions by date (no date filtering)
         const dateMap: { [key: string]: number } = {};
         
-        data.recentAcSubmissionList.forEach((submission: any) => {
+        // Store detailed submission data
+        const detailedSubmissions = data.recentAcSubmissionList.map((submission: any) => {
           if (submission.timestamp) {
             const date = new Date(parseInt(submission.timestamp) * 1000);
             date.setHours(0, 0, 0, 0);
             const dateKey = date.toISOString().split('T')[0];
             dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
           }
-        });
+          
+          return {
+            submissionId: submission.id,
+            problemTitle: submission.title,
+            problemSlug: submission.titleSlug,
+            problemUrl: `https://leetcode.com/problems/${submission.titleSlug}/`,
+            timestamp: submission.timestamp ? new Date(parseInt(submission.timestamp) * 1000) : null,
+            language: submission.lang,
+            status: submission.statusDisplay,
+          };
+        }).filter((s: any) => s.timestamp !== null);
 
         // Convert to array format and sort by date
         const submissionDates = Object.entries(dateMap)
@@ -477,6 +488,7 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
           success: true,
           username,
           submissionDates,
+          detailedSubmissions, // Include detailed submission data
           totalSubmissions: data.recentAcSubmissionList.length,
           uniqueDates: submissionDates.length,
         });
@@ -570,6 +582,45 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
           }
         }
       });
+
+      // Try to extract submission dates from user's submission page
+      try {
+        const submissionUrl = `https://www.codechef.com/users/${username}/submissions`;
+        const submissionResponse = await axios.get(submissionUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          },
+          timeout: 10000,
+        });
+
+        const sub$ = load(submissionResponse.data);
+        
+        // Find all submission rows
+        sub$('table.dataTable tbody tr, .submission-row, .sub-list tr').each((_, row) => {
+          const dateCell = sub$(row).find('td:last-child, .date-cell, .submission-time').text().trim();
+          if (dateCell) {
+            try {
+              // CodeChef dates might be in various formats
+              const date = new Date(dateCell);
+              if (!isNaN(date.getTime())) {
+                date.setHours(0, 0, 0, 0);
+                const dateKey = date.toISOString().split('T')[0];
+                dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
+              }
+            } catch (e) {
+              // Try alternative date parsing
+              const dateMatch = dateCell.match(/(\d{4})-(\d{2})-(\d{2})/);
+              if (dateMatch) {
+                const dateKey = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+                dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
+              }
+            }
+          }
+        });
+      } catch (subError) {
+        console.log('Could not fetch submission page:', subError.message);
+        // Continue without submission page data
+      }
 
       // Convert to array format and sort by date
       const submissionDates = Object.entries(dateMap)
