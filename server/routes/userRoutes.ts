@@ -447,13 +447,46 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
         
         // Get submission dates (if available) - scrape ALL available dates
         let submissionDates: Array<{ date: string; count: number }> = [];
+        let detailedSubmissions: any[] = [];
         try {
           const submissionsResponse = await axios.get(`${API_BASE_URL}/scrape/codechef/${user.codechefHandle}/submissions`, {
             timeout: 15000,
           });
           if (submissionsResponse.data && submissionsResponse.data.success) {
             submissionDates = submissionsResponse.data.submissionDates || [];
-            console.log(`Scraped ${submissionDates.length} unique days of CodeChef submission activity`);
+            detailedSubmissions = submissionsResponse.data.detailedSubmissions || [];
+            console.log(`Scraped ${submissionDates.length} unique days of CodeChef submission activity (${submissionsResponse.data.totalSubmissions || 0} total submissions)`);
+            
+            // Store detailed submissions in database
+            if (detailedSubmissions.length > 0) {
+              const bulkOps = detailedSubmissions.map((submission: any) => ({
+                updateOne: {
+                  filter: {
+                    firebaseUid,
+                    platform: 'codechef',
+                    submissionId: submission.submissionId,
+                  },
+                  update: {
+                    $set: {
+                      userId: user._id,
+                      firebaseUid,
+                      platform: 'codechef',
+                      problemTitle: submission.problemTitle,
+                      problemSlug: submission.problemSlug,
+                      problemUrl: submission.problemUrl,
+                      submissionId: submission.submissionId,
+                      timestamp: submission.timestamp,
+                      language: submission.language,
+                      status: submission.status,
+                    },
+                  },
+                  upsert: true,
+                },
+              }));
+              
+              await ExternalSubmission.bulkWrite(bulkOps);
+              console.log(`Stored ${detailedSubmissions.length} CodeChef submissions in database`);
+            }
           }
         } catch (subError: any) {
           console.error('Error scraping CodeChef submissions:', subError.message);

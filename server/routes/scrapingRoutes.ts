@@ -637,25 +637,52 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
 
         const sub$ = load(submissionResponse.data);
         
-        // Find all submission rows
+        // Find all submission rows and extract detailed submission data
+        const detailedSubmissions: any[] = [];
         sub$('table.dataTable tbody tr, .submission-row, .sub-list tr').each((_, row) => {
-          const dateCell = sub$(row).find('td:last-child, .date-cell, .submission-time').text().trim();
+          const rowData = sub$(row);
+          const problemLink = rowData.find('a[href*="/problems/"]').first();
+          const problemTitle = problemLink.text().trim();
+          const problemUrl = problemLink.attr('href');
+          const problemSlug = problemUrl ? problemUrl.split('/problems/')[1]?.split('/')[0] : undefined;
+          const dateCell = rowData.find('td:last-child, .date-cell, .submission-time').text().trim();
+          const submissionId = rowData.find('a[href*="/viewsolution/"]').attr('href')?.split('/viewsolution/')[1];
+          const language = rowData.find('td').eq(3).text().trim() || rowData.find('.language').text().trim();
+          const status = rowData.find('td').eq(2).text().trim() || rowData.find('.status').text().trim();
+          
           if (dateCell) {
+            let parsedDate: Date | null = null;
+            let dateKey: string | null = null;
+            
             try {
               // CodeChef dates might be in various formats
-              const date = new Date(dateCell);
-              if (!isNaN(date.getTime())) {
-                date.setHours(0, 0, 0, 0);
-                const dateKey = date.toISOString().split('T')[0];
+              parsedDate = new Date(dateCell);
+              if (!isNaN(parsedDate.getTime())) {
+                parsedDate.setHours(0, 0, 0, 0);
+                dateKey = parsedDate.toISOString().split('T')[0];
                 dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
               }
             } catch (e) {
               // Try alternative date parsing
               const dateMatch = dateCell.match(/(\d{4})-(\d{2})-(\d{2})/);
               if (dateMatch) {
-                const dateKey = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+                dateKey = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
                 dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
+                parsedDate = new Date(dateKey);
               }
+            }
+            
+            // Store detailed submission if we have valid data
+            if (parsedDate && problemTitle && (submissionId || problemSlug)) {
+              detailedSubmissions.push({
+                submissionId: submissionId || `${problemSlug}-${parsedDate.getTime()}`,
+                problemTitle,
+                problemSlug,
+                problemUrl: problemUrl?.startsWith('http') ? problemUrl : `https://www.codechef.com${problemUrl}`,
+                timestamp: parsedDate,
+                language: language || undefined,
+                status: status || undefined,
+              });
             }
           }
         });
@@ -677,6 +704,8 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
         success: submissionDates.length > 0,
         username,
         submissionDates,
+        detailedSubmissions: detailedSubmissions.length > 0 ? detailedSubmissions : undefined,
+        totalSubmissions: detailedSubmissions.length,
         totalDates: submissionDates.length,
         note: submissionDates.length === 0 ? 'CodeChef does not provide public submission dates. Only activity calendar data is available.' : undefined,
       });
