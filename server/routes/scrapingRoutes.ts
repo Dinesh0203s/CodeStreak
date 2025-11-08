@@ -626,6 +626,7 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
       });
 
       // Try to extract submission dates from user's submission page
+      let detailedSubmissions: any[] = [];
       try {
         const submissionUrl = `https://www.codechef.com/users/${username}/submissions`;
         const submissionResponse = await axios.get(submissionUrl, {
@@ -638,7 +639,7 @@ router.get('/codechef/:username/submissions', async (req: Request, res: Response
         const sub$ = load(submissionResponse.data);
         
         // Find all submission rows and extract detailed submission data
-        const detailedSubmissions: any[] = [];
+        detailedSubmissions = [];
         sub$('table.dataTable tbody tr, .submission-row, .sub-list tr').each((_, row) => {
           const rowData = sub$(row);
           const problemLink = rowData.find('a[href*="/problems/"]').first();
