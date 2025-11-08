@@ -8,9 +8,9 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserStats, getOverallLeaderboard, getCollegeLeaderboard, getTodayChallenge, LeaderboardEntry, Challenge, refreshUserStats, getSubmissionHeatmap } from '@/lib/api';
+import { getUserStats, getOverallLeaderboard, getCollegeLeaderboard, getTodayChallenge, LeaderboardEntry, Challenge, refreshUserStats } from '@/lib/api';
 import { toast } from 'sonner';
-import { HeatMap } from '@/components/HeatMap';
+// import { HeatMap } from '@/components/HeatMap';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [todayChallenge, setTodayChallenge] = useState<any>(null);
   const [overallLeaderboard, setOverallLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [collegeLeaderboard, setCollegeLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }>>([]);
+  // const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }>>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -43,22 +43,22 @@ const Dashboard = () => {
           console.log('No challenge for today:', error.message);
         }
 
-        // Fetch leaderboards and heatmap
-        const [overall, college, heatmap] = await Promise.all([
+        // Fetch leaderboards (heatmap hidden for now)
+        const [overall, college] = await Promise.all([
           getOverallLeaderboard(10),
           userStats.college && userStats.college !== 'N/A' 
             ? getCollegeLeaderboard(userStats.college, 10)
             : Promise.resolve([]),
-          getSubmissionHeatmap(user.uid).catch((error) => {
-            console.error('Failed to fetch heatmap data:', error);
-            toast.error('Failed to load activity heatmap. Please try refreshing.');
-            return [];
-          }),
+          // getSubmissionHeatmap(user.uid).catch((error) => {
+          //   console.error('Failed to fetch heatmap data:', error);
+          //   toast.error('Failed to load activity heatmap. Please try refreshing.');
+          //   return [];
+          // }),
         ]);
         
         setOverallLeaderboard(overall);
         setCollegeLeaderboard(college);
-        setHeatmapData(heatmap);
+        // setHeatmapData(heatmap);
       } catch (error: any) {
         toast.error(error.message || 'Failed to load dashboard data');
       } finally {
@@ -165,8 +165,8 @@ const Dashboard = () => {
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* Streak Card */}
-            <Card className="p-6 bg-gradient-to-br from-card to-streak/5 border-streak/20">
+            {/* Streak Card - Hidden for now */}
+            {/* <Card className="p-6 bg-gradient-to-br from-card to-streak/5 border-streak/20">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold">Your Streak</h2>
                 <Flame className="h-8 w-8 text-streak animate-pulse" />
@@ -205,10 +205,10 @@ const Dashboard = () => {
                   </Button>
                 )}
               </div>
-            </Card>
+            </Card> */}
 
-            {/* Monthly Goal */}
-            <Card className="p-6">
+            {/* Monthly Goal - Hidden for now */}
+            {/* <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Target className="h-5 w-5 text-challenge" />
@@ -232,14 +232,14 @@ const Dashboard = () => {
                   {Math.round(((stats.totalSolved || 0) / (stats.monthlyGoal || 20)) * 100)}%
                 </span>
               </div>
-            </Card>
+            </Card> */}
 
-            {/* Activity Heat Map */}
-            <HeatMap 
+            {/* Activity Heat Map - Hidden for now */}
+            {/* <HeatMap 
               data={heatmapData} 
               longestStreak={stats?.longestStreak || 0}
               totalProblemsSolved={stats?.totalSolved || 0}
-            />
+            /> */}
 
             {/* Platform Stats */}
             <div className="grid md:grid-cols-2 gap-6">

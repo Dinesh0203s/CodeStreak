@@ -6,27 +6,51 @@ const router = express.Router();
 // Get overall leaderboard
 router.get('/overall', async (req: Request, res: Response) => {
   try {
-    const { limit = 50, sortBy = 'currentStreak' } = req.query;
+    const { limit = 50, sortBy = 'solved' } = req.query;
 
-    const sortField = sortBy === 'solved' ? 'totalProblemsSolved' : 'currentStreak';
+    // Fetch users with LeetCode and CodeChef stats
+    const users = await User.find({})
+      .select('fullName displayName email college department currentStreak longestStreak totalProblemsSolved photoURL leetcodeStats codechefStats')
+      .limit(Number(limit) * 2); // Fetch more to account for filtering
 
-    const users = await User.find({
-      totalProblemsSolved: { $gt: 0 }, // Only users who have solved problems
-    })
-      .select('fullName displayName email college department currentStreak longestStreak totalProblemsSolved photoURL')
-      .sort({ [sortField]: -1 })
-      .limit(Number(limit));
+    // Calculate total solved (LeetCode + CodeChef) for each user
+    const usersWithTotalSolved = users.map((user) => {
+      const leetcodeSolved = user.leetcodeStats?.solvedProblems || 0;
+      const codechefSolved = user.codechefStats?.problemsSolved || 0;
+      const totalSolved = leetcodeSolved + codechefSolved;
+      
+      return {
+        user,
+        totalSolved,
+        leetcodeSolved,
+        codechefSolved,
+      };
+    });
 
-    const leaderboard = users.map((user, index) => ({
+    // Filter out users with 0 total solved and sort
+    const filteredUsers = usersWithTotalSolved.filter(u => u.totalSolved > 0);
+    
+    if (sortBy === 'solved') {
+      filteredUsers.sort((a, b) => b.totalSolved - a.totalSolved);
+    } else {
+      filteredUsers.sort((a, b) => (b.user.currentStreak || 0) - (a.user.currentStreak || 0));
+    }
+
+    // Limit results
+    const limitedUsers = filteredUsers.slice(0, Number(limit));
+
+    const leaderboard = limitedUsers.map((item, index) => ({
       rank: index + 1,
-      name: user.fullName || user.displayName,
-      email: user.email,
-      college: user.college || 'N/A',
-      department: user.department || 'N/A',
-      streak: user.currentStreak || 0,
-      longestStreak: user.longestStreak || 0,
-      solved: user.totalProblemsSolved || 0,
-      avatar: user.photoURL,
+      name: item.user.fullName || item.user.displayName,
+      email: item.user.email,
+      college: item.user.college || 'N/A',
+      department: item.user.department || 'N/A',
+      streak: item.user.currentStreak || 0,
+      longestStreak: item.user.longestStreak || 0,
+      solved: item.totalSolved,
+      leetcodeSolved: item.leetcodeSolved,
+      codechefSolved: item.codechefSolved,
+      avatar: item.user.photoURL,
     }));
 
     res.json(leaderboard);
@@ -40,28 +64,53 @@ router.get('/overall', async (req: Request, res: Response) => {
 router.get('/college/:collegeName', async (req: Request, res: Response) => {
   try {
     const { collegeName } = req.params;
-    const { limit = 50, sortBy = 'currentStreak' } = req.query;
+    const { limit = 50, sortBy = 'solved' } = req.query;
 
-    const sortField = sortBy === 'solved' ? 'totalProblemsSolved' : 'currentStreak';
-
+    // Fetch users with LeetCode and CodeChef stats
     const users = await User.find({
       college: collegeName,
-      totalProblemsSolved: { $gt: 0 },
     })
-      .select('fullName displayName email college department currentStreak longestStreak totalProblemsSolved photoURL')
-      .sort({ [sortField]: -1 })
-      .limit(Number(limit));
+      .select('fullName displayName email college department currentStreak longestStreak totalProblemsSolved photoURL leetcodeStats codechefStats')
+      .limit(Number(limit) * 2); // Fetch more to account for filtering
 
-    const leaderboard = users.map((user, index) => ({
+    // Calculate total solved (LeetCode + CodeChef) for each user
+    const usersWithTotalSolved = users.map((user) => {
+      const leetcodeSolved = user.leetcodeStats?.solvedProblems || 0;
+      const codechefSolved = user.codechefStats?.problemsSolved || 0;
+      const totalSolved = leetcodeSolved + codechefSolved;
+      
+      return {
+        user,
+        totalSolved,
+        leetcodeSolved,
+        codechefSolved,
+      };
+    });
+
+    // Filter out users with 0 total solved and sort
+    const filteredUsers = usersWithTotalSolved.filter(u => u.totalSolved > 0);
+    
+    if (sortBy === 'solved') {
+      filteredUsers.sort((a, b) => b.totalSolved - a.totalSolved);
+    } else {
+      filteredUsers.sort((a, b) => (b.user.currentStreak || 0) - (a.user.currentStreak || 0));
+    }
+
+    // Limit results
+    const limitedUsers = filteredUsers.slice(0, Number(limit));
+
+    const leaderboard = limitedUsers.map((item, index) => ({
       rank: index + 1,
-      name: user.fullName || user.displayName,
-      email: user.email,
-      college: user.college || 'N/A',
-      department: user.department || 'N/A',
-      streak: user.currentStreak || 0,
-      longestStreak: user.longestStreak || 0,
-      solved: user.totalProblemsSolved || 0,
-      avatar: user.photoURL,
+      name: item.user.fullName || item.user.displayName,
+      email: item.user.email,
+      college: item.user.college || 'N/A',
+      department: item.user.department || 'N/A',
+      streak: item.user.currentStreak || 0,
+      longestStreak: item.user.longestStreak || 0,
+      solved: item.totalSolved,
+      leetcodeSolved: item.leetcodeSolved,
+      codechefSolved: item.codechefSolved,
+      avatar: item.user.photoURL,
     }));
 
     res.json(leaderboard);
