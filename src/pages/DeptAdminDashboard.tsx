@@ -260,6 +260,234 @@ const DeptAdminDashboard = () => {
           const timestamp3 = new Date().toISOString().split('T')[0];
           exportToCSV(fullData, `Full_Data_Export_${deptName.replace(/\s+/g, '_')}_${timestamp3}.csv`);
           break;
+        case 'daywise-leetcode':
+          // Collect all day-wise data from all students
+          const daywiseData: Array<{
+            Date: string;
+            Student: string;
+            Email: string;
+            Department: string;
+            'LeetCode Handle': string;
+            'Easy Problems': number;
+            'Medium Problems': number;
+            'Hard Problems': number;
+            'Total Problems': number;
+          }> = [];
+
+          students.forEach((student) => {
+            const breakdown = student.leetcodeStats?.dailyDifficultyBreakdown || [];
+            
+            if (breakdown.length === 0) {
+              // If no day-wise data, still add a row showing no data
+              daywiseData.push({
+                Date: 'N/A',
+                Student: student.fullName || student.displayName,
+                Email: student.email,
+                Department: student.department || 'N/A',
+                'LeetCode Handle': student.leetcodeHandle || 'N/A',
+                'Easy Problems': 0,
+                'Medium Problems': 0,
+                'Hard Problems': 0,
+                'Total Problems': 0,
+              });
+            } else {
+              // Add a row for each day
+              breakdown.forEach((day) => {
+                daywiseData.push({
+                  Date: day.date,
+                  Student: student.fullName || student.displayName,
+                  Email: student.email,
+                  Department: student.department || 'N/A',
+                  'LeetCode Handle': student.leetcodeHandle || 'N/A',
+                  'Easy Problems': day.easy || 0,
+                  'Medium Problems': day.medium || 0,
+                  'Hard Problems': day.hard || 0,
+                  'Total Problems': day.total || 0,
+                });
+              });
+            }
+          });
+
+          // Sort by date, then by student name
+          daywiseData.sort((a, b) => {
+            if (a.Date === 'N/A' && b.Date !== 'N/A') return 1;
+            if (a.Date !== 'N/A' && b.Date === 'N/A') return -1;
+            if (a.Date !== 'N/A' && b.Date !== 'N/A') {
+              const dateCompare = a.Date.localeCompare(b.Date);
+              if (dateCompare !== 0) return dateCompare;
+            }
+            return a.Student.localeCompare(b.Student);
+          });
+
+          const timestamp4 = new Date().toISOString().split('T')[0];
+          exportToCSV(daywiseData, `Daywise_LeetCode_Report_${deptName.replace(/\s+/g, '_')}_${timestamp4}.csv`);
+          break;
+        case 'daywise-codechef':
+          // Collect all day-wise data from all students
+          const codechefDaywiseData: Array<{
+            Date: string;
+            Student: string;
+            Email: string;
+            Department: string;
+            'CodeChef Handle': string;
+            'Problems Solved': number;
+          }> = [];
+
+          students.forEach((student) => {
+            const submissionDates = student.codechefStats?.submissionDates || [];
+            
+            if (submissionDates.length === 0) {
+              codechefDaywiseData.push({
+                Date: 'N/A',
+                Student: student.fullName || student.displayName,
+                Email: student.email,
+                Department: student.department || 'N/A',
+                'CodeChef Handle': student.codechefHandle || 'N/A',
+                'Problems Solved': 0,
+              });
+            } else {
+              submissionDates.forEach((day) => {
+                codechefDaywiseData.push({
+                  Date: day.date,
+                  Student: student.fullName || student.displayName,
+                  Email: student.email,
+                  Department: student.department || 'N/A',
+                  'CodeChef Handle': student.codechefHandle || 'N/A',
+                  'Problems Solved': day.count || 0,
+                });
+              });
+            }
+          });
+
+          codechefDaywiseData.sort((a, b) => {
+            if (a.Date === 'N/A' && b.Date !== 'N/A') return 1;
+            if (a.Date !== 'N/A' && b.Date === 'N/A') return -1;
+            if (a.Date !== 'N/A' && b.Date !== 'N/A') {
+              const dateCompare = a.Date.localeCompare(b.Date);
+              if (dateCompare !== 0) return dateCompare;
+            }
+            return a.Student.localeCompare(b.Student);
+          });
+
+          const timestamp5 = new Date().toISOString().split('T')[0];
+          exportToCSV(codechefDaywiseData, `Daywise_CodeChef_Report_${deptName.replace(/\s+/g, '_')}_${timestamp5}.csv`);
+          break;
+        case 'daywise-overall':
+          // Collect all day-wise data from all students (combining LeetCode and CodeChef)
+          const overallDaywiseData: Array<{
+            Date: string;
+            Student: string;
+            Email: string;
+            Department: string;
+            'LeetCode Easy': number;
+            'LeetCode Medium': number;
+            'LeetCode Hard': number;
+            'LeetCode Total': number;
+            'CodeChef Problems': number;
+            'Total Problems': number;
+          }> = [];
+
+          // Create a map to combine data by date and student
+          const dateMap: { [key: string]: { [studentEmail: string]: any } } = {};
+
+          students.forEach((student) => {
+            const studentEmail = student.email;
+            const studentName = student.fullName || student.displayName;
+            const department = student.department || 'N/A';
+
+            // Process LeetCode data
+            const leetcodeBreakdown = student.leetcodeStats?.dailyDifficultyBreakdown || [];
+            leetcodeBreakdown.forEach((day) => {
+              if (!dateMap[day.date]) {
+                dateMap[day.date] = {};
+              }
+              if (!dateMap[day.date][studentEmail]) {
+                dateMap[day.date][studentEmail] = {
+                  Date: day.date,
+                  Student: studentName,
+                  Email: studentEmail,
+                  Department: department,
+                  'LeetCode Easy': 0,
+                  'LeetCode Medium': 0,
+                  'LeetCode Hard': 0,
+                  'LeetCode Total': 0,
+                  'CodeChef Problems': 0,
+                  'Total Problems': 0,
+                };
+              }
+              dateMap[day.date][studentEmail]['LeetCode Easy'] += day.easy || 0;
+              dateMap[day.date][studentEmail]['LeetCode Medium'] += day.medium || 0;
+              dateMap[day.date][studentEmail]['LeetCode Hard'] += day.hard || 0;
+              dateMap[day.date][studentEmail]['LeetCode Total'] += day.total || 0;
+            });
+
+            // Process CodeChef data
+            const codechefDates = student.codechefStats?.submissionDates || [];
+            codechefDates.forEach((day) => {
+              if (!dateMap[day.date]) {
+                dateMap[day.date] = {};
+              }
+              if (!dateMap[day.date][studentEmail]) {
+                dateMap[day.date][studentEmail] = {
+                  Date: day.date,
+                  Student: studentName,
+                  Email: studentEmail,
+                  Department: department,
+                  'LeetCode Easy': 0,
+                  'LeetCode Medium': 0,
+                  'LeetCode Hard': 0,
+                  'LeetCode Total': 0,
+                  'CodeChef Problems': 0,
+                  'Total Problems': 0,
+                };
+              }
+              dateMap[day.date][studentEmail]['CodeChef Problems'] += day.count || 0;
+            });
+          });
+
+          // Convert map to array and calculate totals
+          Object.keys(dateMap).forEach((date) => {
+            Object.keys(dateMap[date]).forEach((email) => {
+              const entry = dateMap[date][email];
+              entry['Total Problems'] = entry['LeetCode Total'] + entry['CodeChef Problems'];
+              overallDaywiseData.push(entry);
+            });
+          });
+
+          // If a student has no data at all, add a row
+          students.forEach((student) => {
+            const hasLeetcode = (student.leetcodeStats?.dailyDifficultyBreakdown || []).length > 0;
+            const hasCodechef = (student.codechefStats?.submissionDates || []).length > 0;
+            
+            if (!hasLeetcode && !hasCodechef) {
+              overallDaywiseData.push({
+                Date: 'N/A',
+                Student: student.fullName || student.displayName,
+                Email: student.email,
+                Department: student.department || 'N/A',
+                'LeetCode Easy': 0,
+                'LeetCode Medium': 0,
+                'LeetCode Hard': 0,
+                'LeetCode Total': 0,
+                'CodeChef Problems': 0,
+                'Total Problems': 0,
+              });
+            }
+          });
+
+          overallDaywiseData.sort((a, b) => {
+            if (a.Date === 'N/A' && b.Date !== 'N/A') return 1;
+            if (a.Date !== 'N/A' && b.Date === 'N/A') return -1;
+            if (a.Date !== 'N/A' && b.Date !== 'N/A') {
+              const dateCompare = a.Date.localeCompare(b.Date);
+              if (dateCompare !== 0) return dateCompare;
+            }
+            return a.Student.localeCompare(b.Student);
+          });
+
+          const timestamp6 = new Date().toISOString().split('T')[0];
+          exportToCSV(overallDaywiseData, `Daywise_Overall_Report_${deptName.replace(/\s+/g, '_')}_${timestamp6}.csv`);
+          break;
         default:
           toast.error('Unknown report type');
       }
@@ -539,6 +767,54 @@ const DeptAdminDashboard = () => {
                   <Button variant="outline" className="w-full">
                     <Download className="mr-2 h-4 w-4" />
                     Export CSV
+                  </Button>
+                </Card>
+
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => generateReport('daywise-leetcode')}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-streak/10">
+                      <BarChart3 className="h-6 w-6 text-streak" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Day-wise LeetCode Report</h3>
+                      <p className="text-xs text-muted-foreground">Daily problems by difficulty (Easy/Medium/Hard)</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    <Download className="mr-2 h-4 w-4" />
+                    Generate Report
+                  </Button>
+                </Card>
+
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => generateReport('daywise-codechef')}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-challenge/10">
+                      <BarChart3 className="h-6 w-6 text-challenge" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Day-wise CodeChef Report</h3>
+                      <p className="text-xs text-muted-foreground">Daily problems solved on CodeChef</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    <Download className="mr-2 h-4 w-4" />
+                    Generate Report
+                  </Button>
+                </Card>
+
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => generateReport('daywise-overall')}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-primary/10">
+                      <BarChart3 className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Day-wise Overall Report</h3>
+                      <p className="text-xs text-muted-foreground">Combined LeetCode & CodeChef daily activity</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    <Download className="mr-2 h-4 w-4" />
+                    Generate Report
                   </Button>
                 </Card>
               </div>

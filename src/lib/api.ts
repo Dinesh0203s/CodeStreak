@@ -550,6 +550,14 @@ export interface LeetCodeStats {
   contestRating: number;
   profileUrl: string;
   success: boolean;
+  submissionDates?: Array<{ date: string; count: number }>;
+  dailyDifficultyBreakdown?: Array<{ 
+    date: string; 
+    easy: number; 
+    medium: number; 
+    hard: number; 
+    total: number;
+  }>;
 }
 
 export interface CodeChefStats {
