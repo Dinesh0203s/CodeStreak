@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 
 const Onboarding = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [colleges, setColleges] = useState<College[]>([]);
@@ -38,6 +38,11 @@ const Onboarding = () => {
   // Check if user is already onboarded
   useEffect(() => {
     const checkOnboardingStatus = async () => {
+      // Wait for auth to finish loading before checking user
+      if (authLoading) {
+        return;
+      }
+
       if (!user) {
         navigate('/auth');
         return;
@@ -82,7 +87,7 @@ const Onboarding = () => {
     };
 
     checkOnboardingStatus();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     const fetchColleges = async () => {
@@ -168,7 +173,7 @@ const Onboarding = () => {
   };
 
   // Show loading while checking onboarding status
-  if (checkingOnboarding) {
+  if (authLoading || checkingOnboarding) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

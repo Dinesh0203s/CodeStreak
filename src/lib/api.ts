@@ -326,6 +326,7 @@ export interface LeaderboardEntry {
   email: string;
   college: string;
   department: string;
+  passoutYear?: string;
   streak: number;
   longestStreak: number;
   solved: number;
@@ -464,7 +465,7 @@ export const getSubmissionHeatmap = async (firebaseUid: string): Promise<Array<{
 };
 
 // Get overall leaderboard
-export const getOverallLeaderboard = async (limit = 50, sortBy: 'streak' | 'solved' = 'streak'): Promise<LeaderboardEntry[]> => {
+export const getOverallLeaderboard = async (limit = 50, sortBy: 'streak' | 'solved' = 'solved'): Promise<LeaderboardEntry[]> => {
   try {
     const response = await fetch(`${API_BASE_URL}/leaderboard/overall?limit=${limit}&sortBy=${sortBy}`);
     await handleFetchError(response, 'Failed to fetch leaderboard');
@@ -477,10 +478,27 @@ export const getOverallLeaderboard = async (limit = 50, sortBy: 'streak' | 'solv
   }
 };
 
-// Get college leaderboard
-export const getCollegeLeaderboard = async (collegeName: string, limit = 50, sortBy: 'streak' | 'solved' = 'streak'): Promise<LeaderboardEntry[]> => {
+// Get college leaderboard (grouped by department)
+export const getCollegeLeaderboard = async (
+  collegeName: string, 
+  limit = 50, 
+  sortBy: 'streak' | 'solved' = 'solved',
+  groupByDepartment = true,
+  filters?: { department?: string; passoutYear?: string }
+): Promise<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/leaderboard/college/${encodeURIComponent(collegeName)}?limit=${limit}&sortBy=${sortBy}`);
+    let url = `${API_BASE_URL}/leaderboard/college/${encodeURIComponent(collegeName)}?limit=${limit}&sortBy=${sortBy}&groupByDepartment=${groupByDepartment}`;
+    
+    if (filters) {
+      if (filters.department && filters.department !== 'all') {
+        url += `&department=${encodeURIComponent(filters.department)}`;
+      }
+      if (filters.passoutYear && filters.passoutYear !== 'all') {
+        url += `&passoutYear=${encodeURIComponent(filters.passoutYear)}`;
+      }
+    }
+    
+    const response = await fetch(url);
     await handleFetchError(response, 'Failed to fetch college leaderboard');
     return response.json();
   } catch (error: any) {

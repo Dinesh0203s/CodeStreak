@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Flame, Target, Trophy, Users, Bell, TrendingUp, Calendar, Award, UserPlus, ExternalLink, RefreshCw, Code2, ChefHat } from 'lucide-react';
+import { Flame, Target, Trophy, Users, Bell, TrendingUp, Calendar, Award, UserPlus, ExternalLink, RefreshCw, Code2, ChefHat, Filter } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserStats, getOverallLeaderboard, getCollegeLeaderboard, getTodayChallenge, LeaderboardEntry, Challenge, refreshUserStats } from '@/lib/api';
 import { toast } from 'sonner';
@@ -21,7 +22,9 @@ const Dashboard = () => {
   const [stats, setStats] = useState<any>(null);
   const [todayChallenge, setTodayChallenge] = useState<any>(null);
   const [overallLeaderboard, setOverallLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [collegeLeaderboard, setCollegeLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [collegeLeaderboard, setCollegeLeaderboard] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
+  const [allCollegeData, setAllCollegeData] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
+  const [collegeFilter, setCollegeFilter] = useState<{ department?: string; passoutYear?: string }>({});
   // const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }>>([]);
 
   useEffect(() => {
@@ -44,11 +47,15 @@ const Dashboard = () => {
         }
 
         // Fetch leaderboards (heatmap hidden for now)
-        const [overall, college] = await Promise.all([
+        const [overall, college, allCollegeData] = await Promise.all([
           getOverallLeaderboard(10),
           userStats.college && userStats.college !== 'N/A' 
-            ? getCollegeLeaderboard(userStats.college, 10)
-            : Promise.resolve([]),
+            ? getCollegeLeaderboard(userStats.college, 50, 'solved', true, collegeFilter)
+            : Promise.resolve({}),
+          // Fetch all data (no filters) to get available departments and years for filter options
+          userStats.college && userStats.college !== 'N/A' 
+            ? getCollegeLeaderboard(userStats.college, 1000, 'solved', true, {})
+            : Promise.resolve({}),
           // getSubmissionHeatmap(user.uid).catch((error) => {
           //   console.error('Failed to fetch heatmap data:', error);
           //   toast.error('Failed to load activity heatmap. Please try refreshing.');
@@ -58,6 +65,7 @@ const Dashboard = () => {
         
         setOverallLeaderboard(overall);
         setCollegeLeaderboard(college);
+        setAllCollegeData(allCollegeData);
         // setHeatmapData(heatmap);
       } catch (error: any) {
         toast.error(error.message || 'Failed to load dashboard data');
@@ -67,7 +75,7 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [user]);
+  }, [user, collegeFilter]);
 
   if (loading || !stats) {
     return (
@@ -95,6 +103,43 @@ const Dashboard = () => {
   const currentUserRank = overallLeaderboard.findIndex(
     (entry) => entry.email === stats.email
   ) + 1;
+
+  // Extract available departments and years from all college data (unfiltered)
+  const { availableDepartments, availableYears } = useMemo(() => {
+    const isGrouped = !Array.isArray(allCollegeData);
+    const groupedData = isGrouped ? allCollegeData as { [department: string]: LeaderboardEntry[] } : null;
+    const flatData = !isGrouped ? allCollegeData as LeaderboardEntry[] : null;
+
+    const departments = new Set<string>();
+    const years = new Set<string>();
+
+    if (groupedData) {
+      Object.keys(groupedData).forEach(dept => {
+        if (dept && dept !== 'N/A' && dept !== 'Other') {
+          departments.add(dept);
+        }
+        groupedData[dept].forEach(entry => {
+          if (entry.passoutYear && entry.passoutYear !== 'N/A') {
+            years.add(entry.passoutYear);
+          }
+        });
+      });
+    } else if (flatData) {
+      flatData.forEach(entry => {
+        if (entry.department && entry.department !== 'N/A') {
+          departments.add(entry.department);
+        }
+        if (entry.passoutYear && entry.passoutYear !== 'N/A') {
+          years.add(entry.passoutYear);
+        }
+      });
+    }
+
+    return {
+      availableDepartments: Array.from(departments).sort(),
+      availableYears: Array.from(years).sort((a, b) => b.localeCompare(a)), // Sort years descending
+    };
+  }, [allCollegeData]);
 
   const handleSolveChallenge = () => {
     if (todayChallenge?._id) {
@@ -511,58 +556,198 @@ const Dashboard = () => {
                   )}
                 </TabsContent>
 
-                <TabsContent value="college" className="space-y-2 mt-0 max-h-96 overflow-y-auto">
-                  <div className="mb-3 p-2 bg-muted/50 rounded-lg text-center">
-                    <p className="text-sm text-muted-foreground">{stats.college}</p>
-                  </div>
-                  {collegeLeaderboard.length === 0 ? (
-                    <div className="text-center py-4 text-muted-foreground text-sm">
-                      No college leaderboard data available
+                <TabsContent value="college" className="space-y-4 mt-0 max-h-96 overflow-y-auto">
+                  <div className="mb-3 space-y-3">
+                    <div className="p-2 bg-muted/50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground">{stats.college}</p>
                     </div>
-                  ) : (
-                    collegeLeaderboard.map((userEntry) => {
-                      const isCurrentUser = userEntry.email === stats.email;
-                      return (
-                        <div 
-                          key={userEntry.rank} 
-                          className={`flex items-center gap-3 p-3 rounded-lg ${
-                            isCurrentUser 
-                              ? 'bg-gradient-streak/10 border border-streak' 
-                              : 'bg-muted/50'
-                          }`}
+                    {/* Filter Controls */}
+                    <div className="flex gap-2 items-center">
+                      <Filter className="h-4 w-4 text-muted-foreground" />
+                      <Select
+                        value={collegeFilter.department || 'all'}
+                        onValueChange={(value) => {
+                          setCollegeFilter(prev => ({
+                            ...prev,
+                            department: value === 'all' ? undefined : value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Departments</SelectItem>
+                          {availableDepartments.map((dept) => (
+                            <SelectItem key={dept} value={dept}>
+                              {dept}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={collegeFilter.passoutYear || 'all'}
+                        onValueChange={(value) => {
+                          setCollegeFilter(prev => ({
+                            ...prev,
+                            passoutYear: value === 'all' ? undefined : value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Years" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Years</SelectItem>
+                          {availableYears.map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {(collegeFilter.department || collegeFilter.passoutYear) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => setCollegeFilter({})}
                         >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                            userEntry.rank === 1 ? 'bg-yellow-500 text-white' :
-                            userEntry.rank === 2 ? 'bg-gray-400 text-white' :
-                            userEntry.rank === 3 ? 'bg-amber-600 text-white' :
-                            'bg-muted text-muted-foreground'
-                          }`}>
-                            {userEntry.rank}
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    // Check if collegeLeaderboard is grouped by department (object) or flat (array)
+                    const isGrouped = !Array.isArray(collegeLeaderboard);
+                    const groupedData = isGrouped ? collegeLeaderboard as { [department: string]: LeaderboardEntry[] } : null;
+                    const flatData = !isGrouped ? collegeLeaderboard as LeaderboardEntry[] : null;
+
+                    if (isGrouped && groupedData) {
+                      const departments = Object.keys(groupedData).sort();
+                      
+                      if (departments.length === 0) {
+                        return (
+                          <div className="text-center py-4 text-muted-foreground text-sm">
+                            No college leaderboard data available
                           </div>
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={userEntry.avatar} />
-                            <AvatarFallback>{userEntry.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
-                              {userEntry.name}
-                              {isCurrentUser && (
-                                <span className="ml-2 text-xs text-streak">(You)</span>
-                              )}
+                        );
+                      }
+
+                      return departments.map((department) => {
+                        const users = groupedData[department];
+                        if (users.length === 0) return null;
+
+                        return (
+                          <div key={department} className="space-y-2">
+                            <div className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 px-2 py-2 border-b border-border">
+                              <h3 className="text-sm font-semibold text-primary">{department}</h3>
                             </div>
-                            <div className="text-xs text-muted-foreground truncate">{userEntry.department}</div>
+                            {users.map((userEntry) => {
+                              const isCurrentUser = userEntry.email === stats.email;
+                              return (
+                                <div 
+                                  key={`${department}-${userEntry.rank}`} 
+                                  className={`flex items-center gap-3 p-3 rounded-lg ${
+                                    isCurrentUser 
+                                      ? 'bg-gradient-streak/10 border border-streak' 
+                                      : 'bg-muted/50'
+                                  }`}
+                                >
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                                    userEntry.rank === 1 ? 'bg-yellow-500 text-white' :
+                                    userEntry.rank === 2 ? 'bg-gray-400 text-white' :
+                                    userEntry.rank === 3 ? 'bg-amber-600 text-white' :
+                                    'bg-muted text-muted-foreground'
+                                  }`}>
+                                    {userEntry.rank}
+                                  </div>
+                                  <Avatar className="h-8 w-8">
+                                    <AvatarImage src={userEntry.avatar} />
+                                    <AvatarFallback>{userEntry.name.charAt(0)}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm truncate">
+                                      {userEntry.name}
+                                      {isCurrentUser && (
+                                        <span className="ml-2 text-xs text-streak">(You)</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="flex items-center gap-1 text-streak font-semibold text-sm">
+                                      <Flame className="h-3 w-3" />
+                                      {userEntry.streak}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{userEntry.solved}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                          <div className="text-right">
-                            <div className="flex items-center gap-1 text-streak font-semibold text-sm">
-                              <Flame className="h-3 w-3" />
-                              {userEntry.streak}
+                        );
+                      });
+                    } else if (flatData) {
+                      // Fallback to flat display for backward compatibility
+                      if (flatData.length === 0) {
+                        return (
+                          <div className="text-center py-4 text-muted-foreground text-sm">
+                            No college leaderboard data available
+                          </div>
+                        );
+                      }
+
+                      return flatData.map((userEntry) => {
+                        const isCurrentUser = userEntry.email === stats.email;
+                        return (
+                          <div 
+                            key={userEntry.rank} 
+                            className={`flex items-center gap-3 p-3 rounded-lg ${
+                              isCurrentUser 
+                                ? 'bg-gradient-streak/10 border border-streak' 
+                                : 'bg-muted/50'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                              userEntry.rank === 1 ? 'bg-yellow-500 text-white' :
+                              userEntry.rank === 2 ? 'bg-gray-400 text-white' :
+                              userEntry.rank === 3 ? 'bg-amber-600 text-white' :
+                              'bg-muted text-muted-foreground'
+                            }`}>
+                              {userEntry.rank}
                             </div>
-                            <div className="text-xs text-muted-foreground">{userEntry.solved}</div>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={userEntry.avatar} />
+                              <AvatarFallback>{userEntry.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                {userEntry.name}
+                                {isCurrentUser && (
+                                  <span className="ml-2 text-xs text-streak">(You)</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">{userEntry.department}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="flex items-center gap-1 text-streak font-semibold text-sm">
+                                <Flame className="h-3 w-3" />
+                                {userEntry.streak}
+                              </div>
+                              <div className="text-xs text-muted-foreground">{userEntry.solved}</div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  )}
+                        );
+                      });
+                    }
+
+                    return (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        No college leaderboard data available
+                      </div>
+                    );
+                  })()}
                 </TabsContent>
               </Tabs>
             </Card>

@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Save, User as UserIcon } from 'lucide-react';
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,6 +39,11 @@ const Profile = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
+      // Wait for auth to finish loading before checking user
+      if (authLoading) {
+        return;
+      }
+
       if (!user) {
         navigate('/auth');
         return;
@@ -70,7 +75,7 @@ const Profile = () => {
     };
 
     fetchProfile();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   // Get departments for selected college
   const availableDepartments = useMemo(() => {
@@ -94,7 +99,7 @@ const Profile = () => {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />

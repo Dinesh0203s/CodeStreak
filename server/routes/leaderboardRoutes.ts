@@ -31,9 +31,19 @@ router.get('/overall', async (req: Request, res: Response) => {
     const filteredUsers = usersWithTotalSolved.filter(u => u.totalSolved > 0);
     
     if (sortBy === 'solved') {
-      filteredUsers.sort((a, b) => b.totalSolved - a.totalSolved);
+      // Sort by solved, then by streak as tiebreaker
+      filteredUsers.sort((a, b) => {
+        const solvedDiff = b.totalSolved - a.totalSolved;
+        if (solvedDiff !== 0) return solvedDiff;
+        return (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+      });
     } else {
-      filteredUsers.sort((a, b) => (b.user.currentStreak || 0) - (a.user.currentStreak || 0));
+      // Sort by streak, then by solved as tiebreaker
+      filteredUsers.sort((a, b) => {
+        const streakDiff = (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+        if (streakDiff !== 0) return streakDiff;
+        return b.totalSolved - a.totalSolved;
+      });
     }
 
     // Limit results
@@ -64,13 +74,20 @@ router.get('/overall', async (req: Request, res: Response) => {
 router.get('/college/:collegeName', async (req: Request, res: Response) => {
   try {
     const { collegeName } = req.params;
-    const { limit = 50, sortBy = 'solved' } = req.query;
+    const { limit = 50, sortBy = 'solved', groupByDepartment = 'true', department, passoutYear } = req.query;
+
+    // Build filter query
+    const filter: any = { college: collegeName };
+    if (department && department !== 'all') {
+      filter.department = department;
+    }
+    if (passoutYear && passoutYear !== 'all') {
+      filter.passoutYear = passoutYear;
+    }
 
     // Fetch users with LeetCode and CodeChef stats
-    const users = await User.find({
-      college: collegeName,
-    })
-      .select('fullName displayName email college department currentStreak longestStreak totalProblemsSolved photoURL leetcodeStats codechefStats')
+    const users = await User.find(filter)
+      .select('fullName displayName email college department passoutYear currentStreak longestStreak totalProblemsSolved photoURL leetcodeStats codechefStats')
       .limit(Number(limit) * 2); // Fetch more to account for filtering
 
     // Calculate total solved (LeetCode + CodeChef) for each user
@@ -87,33 +104,92 @@ router.get('/college/:collegeName', async (req: Request, res: Response) => {
       };
     });
 
-    // Filter out users with 0 total solved and sort
+    // Filter out users with 0 total solved
     const filteredUsers = usersWithTotalSolved.filter(u => u.totalSolved > 0);
-    
-    if (sortBy === 'solved') {
-      filteredUsers.sort((a, b) => b.totalSolved - a.totalSolved);
+
+    // Group by department if requested
+    if (groupByDepartment === 'true') {
+      const groupedByDepartment: { [key: string]: typeof filteredUsers } = {};
+      
+      // Group users by department
+      filteredUsers.forEach((item) => {
+        const dept = item.user.department || 'Other';
+        if (!groupedByDepartment[dept]) {
+          groupedByDepartment[dept] = [];
+        }
+        groupedByDepartment[dept].push(item);
+      });
+
+      // Sort each department's users
+      const sortFunction = (a: typeof filteredUsers[0], b: typeof filteredUsers[0]) => {
+        if (sortBy === 'solved') {
+          const solvedDiff = b.totalSolved - a.totalSolved;
+          if (solvedDiff !== 0) return solvedDiff;
+          return (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+        } else {
+          const streakDiff = (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+          if (streakDiff !== 0) return streakDiff;
+          return b.totalSolved - a.totalSolved;
+        }
+      };
+
+      // Sort each department and assign ranks
+      const result: { [key: string]: any[] } = {};
+      Object.keys(groupedByDepartment).forEach((dept) => {
+        const deptUsers = groupedByDepartment[dept];
+        deptUsers.sort(sortFunction);
+        
+        result[dept] = deptUsers.map((item, index) => ({
+          rank: index + 1,
+          name: item.user.fullName || item.user.displayName,
+          email: item.user.email,
+          college: item.user.college || 'N/A',
+          department: item.user.department || 'N/A',
+          passoutYear: item.user.passoutYear || 'N/A',
+          streak: item.user.currentStreak || 0,
+          longestStreak: item.user.longestStreak || 0,
+          solved: item.totalSolved,
+          leetcodeSolved: item.leetcodeSolved,
+          codechefSolved: item.codechefSolved,
+          avatar: item.user.photoURL,
+        }));
+      });
+
+      res.json(result);
     } else {
-      filteredUsers.sort((a, b) => (b.user.currentStreak || 0) - (a.user.currentStreak || 0));
+      // Original flat leaderboard (for backward compatibility)
+      if (sortBy === 'solved') {
+        filteredUsers.sort((a, b) => {
+          const solvedDiff = b.totalSolved - a.totalSolved;
+          if (solvedDiff !== 0) return solvedDiff;
+          return (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+        });
+      } else {
+        filteredUsers.sort((a, b) => {
+          const streakDiff = (b.user.currentStreak || 0) - (a.user.currentStreak || 0);
+          if (streakDiff !== 0) return streakDiff;
+          return b.totalSolved - a.totalSolved;
+        });
+      }
+
+      const limitedUsers = filteredUsers.slice(0, Number(limit));
+      const leaderboard = limitedUsers.map((item, index) => ({
+        rank: index + 1,
+        name: item.user.fullName || item.user.displayName,
+        email: item.user.email,
+        college: item.user.college || 'N/A',
+        department: item.user.department || 'N/A',
+        passoutYear: item.user.passoutYear || 'N/A',
+        streak: item.user.currentStreak || 0,
+        longestStreak: item.user.longestStreak || 0,
+        solved: item.totalSolved,
+        leetcodeSolved: item.leetcodeSolved,
+        codechefSolved: item.codechefSolved,
+        avatar: item.user.photoURL,
+      }));
+
+      res.json(leaderboard);
     }
-
-    // Limit results
-    const limitedUsers = filteredUsers.slice(0, Number(limit));
-
-    const leaderboard = limitedUsers.map((item, index) => ({
-      rank: index + 1,
-      name: item.user.fullName || item.user.displayName,
-      email: item.user.email,
-      college: item.user.college || 'N/A',
-      department: item.user.department || 'N/A',
-      streak: item.user.currentStreak || 0,
-      longestStreak: item.user.longestStreak || 0,
-      solved: item.totalSolved,
-      leetcodeSolved: item.leetcodeSolved,
-      codechefSolved: item.codechefSolved,
-      avatar: item.user.photoURL,
-    }));
-
-    res.json(leaderboard);
   } catch (error: any) {
     console.error('Error fetching college leaderboard:', error);
     res.status(500).json({ error: error.message });
