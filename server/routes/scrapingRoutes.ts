@@ -456,7 +456,48 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
         // Group ALL submissions by date (no date filtering)
         const dateMap: { [key: string]: number } = {};
         
-        // Store detailed submission data
+        // Get unique problem slugs to fetch difficulties in batch
+        const uniqueSlugs = [...new Set(data.recentAcSubmissionList.map((s: any) => s.titleSlug).filter(Boolean))];
+        const difficultyMap: { [slug: string]: 'Easy' | 'Medium' | 'Hard' } = {};
+        
+        // Fetch difficulties for all problems in batches
+        const batchSize = 50;
+        for (let i = 0; i < uniqueSlugs.length; i += batchSize) {
+          const batch = uniqueSlugs.slice(i, i + batchSize);
+          try {
+            const difficultyQuery = batch.map((slug: string, idx: number) => 
+              `p${idx}: question(titleSlug: "${slug}") { difficulty }`
+            ).join('\n');
+            
+            const difficultyResponse = await axios.post(
+              'https://leetcode.com/graphql/',
+              {
+                query: `query { ${difficultyQuery} }`,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                },
+                timeout: 10000,
+              }
+            );
+            
+            if (difficultyResponse.data?.data) {
+              batch.forEach((slug: string, idx: number) => {
+                const difficulty = difficultyResponse.data.data[`p${idx}`]?.difficulty;
+                if (difficulty) {
+                  difficultyMap[slug] = difficulty;
+                }
+              });
+            }
+          } catch (err) {
+            // Continue even if difficulty fetch fails
+            console.log(`Failed to fetch difficulties for batch ${i}-${i + batchSize}`);
+          }
+        }
+        
+        // Store detailed submission data with difficulty
         const detailedSubmissions = data.recentAcSubmissionList.map((submission: any) => {
           if (submission.timestamp) {
             const date = new Date(parseInt(submission.timestamp) * 1000);
@@ -473,6 +514,7 @@ router.get('/leetcode/:username/submissions', async (req: Request, res: Response
             timestamp: submission.timestamp ? new Date(parseInt(submission.timestamp) * 1000) : null,
             language: submission.lang,
             status: submission.statusDisplay,
+            difficulty: submission.titleSlug ? difficultyMap[submission.titleSlug] : undefined,
           };
         }).filter((s: any) => s.timestamp !== null);
 

@@ -299,6 +299,7 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
         // Get submission dates and detailed submissions
         let submissionDates: Array<{ date: string; count: number }> = [];
         let detailedSubmissions: any[] = [];
+        let dailyDifficultyBreakdown: Array<{ date: string; easy: number; medium: number; hard: number; total: number }> = [];
         try {
           const submissionsResponse = await axios.get(`${API_BASE_URL}/scrape/leetcode/${user.leetcodeHandle}/submissions?limit=20000`, {
             timeout: 30000,
@@ -329,6 +330,7 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
                       timestamp: submission.timestamp,
                       language: submission.language,
                       status: submission.status,
+                      difficulty: submission.difficulty,
                     },
                   },
                   upsert: true,
@@ -338,6 +340,49 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
               await ExternalSubmission.bulkWrite(bulkOps);
               console.log(`Stored ${detailedSubmissions.length} LeetCode submissions in database`);
             }
+            
+            // Calculate day-wise difficulty breakdown from ExternalSubmission
+            const leetcodeSubmissions = await ExternalSubmission.find({
+              firebaseUid,
+              platform: 'leetcode',
+              difficulty: { $exists: true, $ne: null },
+            }).select('timestamp difficulty').sort({ timestamp: 1 });
+            
+            const dailyBreakdown: { [date: string]: { easy: number; medium: number; hard: number; total: number } } = {};
+            
+            leetcodeSubmissions.forEach((sub: any) => {
+              if (sub.timestamp && sub.difficulty) {
+                const date = new Date(sub.timestamp);
+                date.setHours(0, 0, 0, 0);
+                const dateKey = date.toISOString().split('T')[0];
+                
+                if (!dailyBreakdown[dateKey]) {
+                  dailyBreakdown[dateKey] = { easy: 0, medium: 0, hard: 0, total: 0 };
+                }
+                
+                if (sub.difficulty === 'Easy') {
+                  dailyBreakdown[dateKey].easy++;
+                } else if (sub.difficulty === 'Medium') {
+                  dailyBreakdown[dateKey].medium++;
+                } else if (sub.difficulty === 'Hard') {
+                  dailyBreakdown[dateKey].hard++;
+                }
+                dailyBreakdown[dateKey].total++;
+              }
+            });
+            
+            // Convert to array format
+            dailyDifficultyBreakdown = Object.entries(dailyBreakdown)
+              .map(([date, counts]) => ({
+                date,
+                easy: counts.easy,
+                medium: counts.medium,
+                hard: counts.hard,
+                total: counts.total,
+              }))
+              .sort((a, b) => a.date.localeCompare(b.date));
+            
+            console.log(`Calculated day-wise difficulty breakdown for ${dailyDifficultyBreakdown.length} days`);
           }
         } catch (subError: any) {
           console.error('Error scraping LeetCode submissions:', subError.message);
@@ -348,6 +393,7 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
           updateData.leetcodeStats = {
             ...leetcodeResponse.data,
             submissionDates,
+            dailyDifficultyBreakdown: dailyDifficultyBreakdown || [],
             lastScrapedAt: new Date(),
           };
           

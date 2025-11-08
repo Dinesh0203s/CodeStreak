@@ -11,6 +11,7 @@ export interface IExternalSubmission extends Document {
   timestamp: Date; // When the problem was solved
   language?: string; // Programming language used
   status?: string; // Status (e.g., "Accepted")
+  difficulty?: 'Easy' | 'Medium' | 'Hard'; // Problem difficulty (for LeetCode)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +58,10 @@ const ExternalSubmissionSchema: Schema = new Schema(
     },
     status: {
       type: String,
+    },
+    difficulty: {
+      type: String,
+      enum: ['Easy', 'Medium', 'Hard'],
     },
   },
   {

@@ -31,6 +31,13 @@ export interface IUser extends Document {
     profileUrl: string;
     lastScrapedAt?: Date;
     submissionDates?: Array<{ date: string; count: number }>; // Actual submission dates
+    dailyDifficultyBreakdown?: Array<{ 
+      date: string; 
+      easy: number; 
+      medium: number; 
+      hard: number; 
+      total: number;
+    }>; // Day-wise difficulty breakdown
   };
   codechefStats?: {
     username: string;
@@ -134,6 +141,13 @@ const UserSchema: Schema = new Schema(
         submissionDates: [{
           date: String,
           count: Number,
+        }],
+        dailyDifficultyBreakdown: [{
+          date: String,
+          easy: Number,
+          medium: Number,
+          hard: Number,
+          total: Number,
         }],
       },
     },
