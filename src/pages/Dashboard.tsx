@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 // import { HeatMap } from '@/components/HeatMap';
 
 const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [leaderboardTab, setLeaderboardTab] = useState('overall');
   const [loading, setLoading] = useState(true);
@@ -25,10 +25,17 @@ const Dashboard = () => {
   const [collegeLeaderboard, setCollegeLeaderboard] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
   const [allCollegeData, setAllCollegeData] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
   const [collegeFilter, setCollegeFilter] = useState<{ department?: string; passoutYear?: string }>({});
+  const [error, setError] = useState<string | null>(null);
   // const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }>>([]);
 
   useEffect(() => {
-    if (!user) return;
+    // Wait for auth to finish loading
+    if (authLoading) return;
+    
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
 
     const fetchData = async () => {
       try {
@@ -47,14 +54,23 @@ const Dashboard = () => {
         }
 
         // Fetch leaderboards (heatmap hidden for now)
-        const [overall, college, allCollegeData] = await Promise.all([
-          getOverallLeaderboard(10),
+        const [overall, college, allCollegeData] = await Promise.allSettled([
+          getOverallLeaderboard(10).catch((err) => {
+            console.error('Error fetching overall leaderboard:', err);
+            return [];
+          }),
           userStats.college && userStats.college !== 'N/A' 
-            ? getCollegeLeaderboard(userStats.college, 50, 'solved', true, collegeFilter)
+            ? getCollegeLeaderboard(userStats.college, 50, 'solved', true, collegeFilter).catch((err) => {
+                console.error('Error fetching college leaderboard:', err);
+                return {};
+              })
             : Promise.resolve({}),
           // Fetch all data (no filters) to get available departments and years for filter options
           userStats.college && userStats.college !== 'N/A' 
-            ? getCollegeLeaderboard(userStats.college, 1000, 'solved', true, {})
+            ? getCollegeLeaderboard(userStats.college, 1000, 'solved', true, {}).catch((err) => {
+                console.error('Error fetching all college data:', err);
+                return {};
+              })
             : Promise.resolve({}),
           // getSubmissionHeatmap(user.uid).catch((error) => {
           //   console.error('Failed to fetch heatmap data:', error);
@@ -63,11 +79,14 @@ const Dashboard = () => {
           // }),
         ]);
         
-        setOverallLeaderboard(overall);
-        setCollegeLeaderboard(college);
-        setAllCollegeData(allCollegeData);
+        setOverallLeaderboard(overall.status === 'fulfilled' ? overall.value : []);
+        setCollegeLeaderboard(college.status === 'fulfilled' ? college.value : {});
+        setAllCollegeData(allCollegeData.status === 'fulfilled' ? allCollegeData.value : {});
+        setError(null);
         // setHeatmapData(heatmap);
       } catch (error: any) {
+        console.error('Error fetching dashboard data:', error);
+        setError(error.message || 'Failed to load dashboard data');
         toast.error(error.message || 'Failed to load dashboard data');
       } finally {
         setLoading(false);
@@ -75,36 +94,10 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [user, collegeFilter]);
-
-  if (loading || !stats) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <div className="container mx-auto px-4 py-8 flex items-center justify-center">
-          <div className="text-center">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  const formatLastSolved = (dateString?: string) => {
-    if (!dateString) return 'Never';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    return `${diffDays} days ago`;
-  };
-
-  const currentUserRank = overallLeaderboard.findIndex(
-    (entry) => entry.email === stats.email
-  ) + 1;
+  }, [user, collegeFilter, authLoading, navigate]);
 
   // Extract available departments and years from all college data (unfiltered)
+  // This hook MUST be called before any conditional returns to follow Rules of Hooks
   const { availableDepartments, availableYears } = useMemo(() => {
     const isGrouped = !Array.isArray(allCollegeData);
     const groupedData = isGrouped ? allCollegeData as { [department: string]: LeaderboardEntry[] } : null;
@@ -140,6 +133,51 @@ const Dashboard = () => {
       availableYears: Array.from(years).sort((a, b) => b.localeCompare(a)), // Sort years descending
     };
   }, [allCollegeData]);
+
+  // All hooks must be called before conditional returns
+  if (authLoading || loading || !stats) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-streak mx-auto mb-4"></div>
+            <div>Loading...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const formatLastSolved = (dateString?: string) => {
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    return `${diffDays} days ago`;
+  };
+
+  const currentUserRank = overallLeaderboard.findIndex(
+    (entry) => entry.email === stats.email
+  ) + 1;
 
   const handleSolveChallenge = () => {
     if (todayChallenge?._id) {
