@@ -5,6 +5,7 @@ import ActivityHeatmap from '../models/ActivityHeatmap.js';
 import ExternalSubmission from '../models/ExternalSubmission.js';
 import Submission from '../models/Submission.js';
 import { requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
+import { manualRefreshAllUsers } from '../jobs/scheduledRefresh.js';
 
 const router = express.Router();
 
@@ -643,6 +644,51 @@ router.post('/:firebaseUid/refresh-stats', async (req: Request, res: Response) =
     }
   } catch (error: any) {
     console.error('Error refreshing stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Refresh all students' stats (Admin only)
+router.post('/refresh-all', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { collegeName, callerFirebaseUid } = req.body; // Optional: filter by college
+    
+    // Get current user from middleware
+    const firebaseUid = req.user?.firebaseUid || callerFirebaseUid;
+    if (!firebaseUid) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const currentUser = await User.findOne({ firebaseUid });
+    if (!currentUser) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    
+    // If collegeName is provided and user is not superAdmin, verify they're admin of that college
+    if (collegeName && currentUser.role !== 'superAdmin') {
+      if (currentUser.college !== collegeName) {
+        return res.status(403).json({ error: 'You can only refresh stats for your own college' });
+      }
+    }
+    
+    console.log(`🔄 Admin ${currentUser.email} initiated refresh for all students${collegeName ? ` in college: ${collegeName}` : ''}`);
+    
+    // Start refresh in background (don't wait for completion)
+    manualRefreshAllUsers(collegeName)
+      .then((result) => {
+        console.log('✅ Background refresh completed:', result);
+      })
+      .catch((error) => {
+        console.error('❌ Background refresh failed:', error);
+      });
+    
+    // Return immediately with success message
+    res.json({
+      success: true,
+      message: `Refresh started for all students${collegeName ? ` in ${collegeName}` : ''}. This will run in the background.`,
+    });
+  } catch (error: any) {
+    console.error('Error starting refresh all:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -9,6 +9,7 @@ import challengeRoutes from './routes/challengeRoutes.js';
 import submissionRoutes from './routes/submissionRoutes.js';
 import leaderboardRoutes from './routes/leaderboardRoutes.js';
 import scrapingRoutes from './routes/scrapingRoutes.js';
+import { startScheduledRefresh } from './jobs/scheduledRefresh.js';
 
 // Load environment variables
 dotenv.config();
@@ -48,5 +49,8 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  
+  // Start scheduled refresh job
+  startScheduledRefresh();
 });
 

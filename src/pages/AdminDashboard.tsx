@@ -51,7 +51,8 @@ import {
   FileText,
   BarChart3,
   PieChart,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 import {
   Table,
@@ -75,6 +76,7 @@ import {
   deleteDepartment,
   updateUserRole,
   getUserByFirebaseUid,
+  refreshAllStudentsStats,
   College,
   User
 } from '@/lib/api';
@@ -731,6 +733,26 @@ const AdminDashboard = () => {
               <div className="mb-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold">Student Overview</h2>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      if (!currentUser?.uid) return;
+                      try {
+                        setRefreshingAll(true);
+                        const result = await refreshAllStudentsStats(currentUser.uid, adminCollege);
+                        toast.success(result.message || 'Refresh started for all students. This will run in the background.');
+                      } catch (error: any) {
+                        toast.error(error.message || 'Failed to start refresh');
+                      } finally {
+                        setRefreshingAll(false);
+                      }
+                    }}
+                    disabled={refreshingAll}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${refreshingAll ? 'animate-spin' : ''}`} />
+                    {refreshingAll ? 'Refreshing...' : 'Refresh All Students'}
+                  </Button>
                 </div>
                 
                 {/* Search */}

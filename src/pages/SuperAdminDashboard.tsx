@@ -49,7 +49,8 @@ import {
   GraduationCap,
   Edit,
   UserCog,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import {
   Table,
@@ -74,6 +75,7 @@ import {
   addDepartment,
   updateDepartment,
   deleteDepartment,
+  refreshAllStudentsStats,
   College,
   User
 } from '@/lib/api';
@@ -95,6 +97,7 @@ const SuperAdminDashboard = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [topPerformers, setTopPerformers] = useState<any[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   
   // User management state
   const [users, setUsers] = useState<User[]>([]);
@@ -577,10 +580,32 @@ const SuperAdminDashboard = () => {
             </div>
             <p className="text-muted-foreground">Platform-wide analytics and management</p>
           </div>
-          <Button className="bg-gradient-streak border-0 text-white">
-            <Download className="mr-2 h-4 w-4" />
-            Export Global Report
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!currentUser?.uid) return;
+                try {
+                  setRefreshingAll(true);
+                  const result = await refreshAllStudentsStats(currentUser.uid);
+                  toast.success(result.message || 'Refresh started for all students. This will run in the background.');
+                } catch (error: any) {
+                  toast.error(error.message || 'Failed to start refresh');
+                } finally {
+                  setRefreshingAll(false);
+                }
+              }}
+              disabled={refreshingAll}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshingAll ? 'animate-spin' : ''}`} />
+              {refreshingAll ? 'Refreshing...' : 'Refresh All Students'}
+            </Button>
+            <Button className="bg-gradient-streak border-0 text-white">
+              <Download className="mr-2 h-4 w-4" />
+              Export Global Report
+            </Button>
+          </div>
         </div>
 
         {/* Global Stats */}

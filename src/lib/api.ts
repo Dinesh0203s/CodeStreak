@@ -611,6 +611,29 @@ export const refreshUserStats = async (firebaseUid: string): Promise<User> => {
   }
 };
 
+// Refresh all students' stats (Admin only)
+export const refreshAllStudentsStats = async (callerFirebaseUid: string, collegeName?: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/refresh-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        callerFirebaseUid,
+        collegeName,
+      }),
+    });
+    await handleFetchError(response, 'Failed to refresh all students stats');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
 // User Management API (for admins)
 // Get all users with optional filters
 export const getAllUsers = async (
