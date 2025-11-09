@@ -19,8 +19,8 @@ const Dashboard = () => {
   const [leaderboardTab, setLeaderboardTab] = useState('overall');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<any>(null);
-  const [todayChallenge, setTodayChallenge] = useState<any>(null);
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof getUserStats>> | null>(null);
+  const [todayChallenge, setTodayChallenge] = useState<Challenge | null>(null);
   const [overallLeaderboard, setOverallLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [collegeLeaderboard, setCollegeLeaderboard] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
   const [allCollegeData, setAllCollegeData] = useState<{ [department: string]: LeaderboardEntry[] } | LeaderboardEntry[]>({});
@@ -49,8 +49,12 @@ const Dashboard = () => {
         try {
           const challenge = await getTodayChallenge();
           setTodayChallenge(challenge);
-        } catch (error: any) {
-          console.log('No challenge for today:', error.message);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          // No challenge for today is not an error, just log for debugging
+          if (import.meta.env.DEV) {
+            console.log('No challenge for today:', errorMessage);
+          }
         }
 
         // Fetch leaderboards (heatmap hidden for now)
@@ -84,10 +88,11 @@ const Dashboard = () => {
         setAllCollegeData(allCollegeData.status === 'fulfilled' ? allCollegeData.value : {});
         setError(null);
         // setHeatmapData(heatmap);
-      } catch (error: any) {
-        console.error('Error fetching dashboard data:', error);
-        setError(error.message || 'Failed to load dashboard data');
-        toast.error(error.message || 'Failed to load dashboard data');
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load dashboard data';
+        console.error('Error fetching dashboard data:', errorMessage);
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -201,9 +206,10 @@ const Dashboard = () => {
       setStats(userStats);
       
       toast.success('Stats refreshed successfully!');
-    } catch (error: any) {
-      console.error('Error refreshing stats:', error);
-      toast.error(error.message || 'Failed to refresh stats');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh stats';
+      console.error('Error refreshing stats:', errorMessage);
+      toast.error(errorMessage);
     } finally {
       setRefreshing(false);
     }

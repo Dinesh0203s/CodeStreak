@@ -44,8 +44,8 @@ export const HeatMap = ({ data, longestStreak = 0, totalProblemsSolved = 0 }: He
     const earliestDate = dates.length > 0 ? dates[0] : new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
     earliestDate.setHours(0, 0, 0, 0);
     
-    // Log for debugging
-    if (dates.length > 0) {
+    // Log for debugging (only in development)
+    if (import.meta.env.DEV && dates.length > 0) {
       console.log(`Heatmap: ${data.length} days with activity, earliest: ${earliestDate.toISOString().split('T')[0]}, latest: ${dates[dates.length - 1].toISOString().split('T')[0]}`);
     }
 

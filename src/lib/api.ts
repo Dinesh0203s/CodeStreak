@@ -443,7 +443,6 @@ export const getUserSubmissions = async (firebaseUid: string, page = 1, limit = 
 export const getSubmissionHeatmap = async (firebaseUid: string): Promise<Array<{ date: string; count: number }>> => {
   try {
     const url = `${API_BASE_URL}/submissions/user/${firebaseUid}/heatmap`;
-    console.log('Fetching heatmap data from:', url);
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -453,11 +452,11 @@ export const getSubmissionHeatmap = async (firebaseUid: string): Promise<Array<{
     }
     
     const data = await response.json();
-    console.log('Heatmap data received:', data.length, 'days with activity');
     return data;
-  } catch (error: any) {
-    console.error('Error fetching heatmap:', error);
-    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching heatmap:', errorMessage);
+    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_CONNECTION_REFUSED')) {
       throw new Error('Backend server is not running. Please start it with: npm run server');
     }
     throw error;

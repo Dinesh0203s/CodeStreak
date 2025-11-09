@@ -65,8 +65,9 @@ const Profile = () => {
           leetcodeHandle: userDataResult.leetcodeHandle || '',
           codechefHandle: userDataResult.codechefHandle || '',
         });
-      } catch (error: any) {
-        if (error.message !== 'User not found') {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage !== 'User not found') {
           toast.error('Failed to load profile');
         }
       } finally {

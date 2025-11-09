@@ -90,7 +90,9 @@ export const ProtectedRoute = ({
         }
       } catch (error: any) {
         // User might not exist yet, redirect to onboarding
-        console.log('User data not found, redirecting to onboarding:', error.message);
+        const errorMessage = error?.message || 'Failed to fetch user data';
+        console.error('User data not found, redirecting to onboarding:', errorMessage);
+        setError(errorMessage);
         navigate('/onboarding');
         setCheckingRole(false);
         return;

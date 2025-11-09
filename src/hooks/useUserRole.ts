@@ -17,9 +17,12 @@ export const useUserRole = () => {
       try {
         const data = await getUserByFirebaseUid(user.uid);
         setUserData(data);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // User might not exist in MongoDB yet
-        console.log('User data not found:', error.message);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (import.meta.env.DEV) {
+          console.log('User data not found:', errorMessage);
+        }
       } finally {
         setLoading(false);
       }

@@ -40,11 +40,14 @@ async function updateStreak(userId: string, solvedAt: Date) {
       return;
     } else if (daysDiff === 1) {
       // Consecutive day
-      newStreak = user.currentStreak + 1;
+      newStreak = (user.currentStreak || 0) + 1;
     } else {
       // Streak broken, start over
       newStreak = 1;
     }
+  } else {
+    // Solving a problem from a past day - don't update streak (only count current day submissions for streaks)
+    return;
   }
 
   // Update longest streak if current is longer
@@ -155,19 +158,18 @@ router.get('/user/:firebaseUid/heatmap', async (req: Request, res: Response) => 
       count: activity.count,
     }));
 
-    // Log date range for debugging
-    if (heatmapData.length > 0) {
+    // Log date range for debugging (only in development)
+    if (process.env.NODE_ENV !== 'production' && heatmapData.length > 0) {
       const earliest = heatmapData[0].date;
       const latest = heatmapData[heatmapData.length - 1].date;
       console.log(`Heatmap data for user ${firebaseUid}: ${heatmapData.length} days with activity (${earliest} to ${latest})`);
-    } else {
-      console.log(`Heatmap data for user ${firebaseUid}: No activity data found. User may need to refresh stats.`);
     }
     
     res.json(heatmapData);
-  } catch (error: any) {
-    console.error('Error fetching heatmap data:', error);
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching heatmap data:', errorMessage);
+    res.status(500).json({ error: errorMessage });
   }
 });
 
