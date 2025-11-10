@@ -767,3 +767,162 @@ export const adminUpdateUser = async (
     throw error;
   }
 };
+
+// Task API
+export interface Task {
+  _id?: string;
+  title: string;
+  description?: string;
+  link: string;
+  assignedTo: string;
+  assignedBy: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateTaskData {
+  title: string;
+  description?: string;
+  link: string;
+  assignedTo: string;
+  assignedBy: string;
+}
+
+// Get all tasks for a user
+export const getUserTasks = async (firebaseUid: string): Promise<Task[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/user/${firebaseUid}`);
+    await handleFetchError(response, 'Failed to fetch tasks');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Get all tasks (admin only)
+export const getAllTasks = async (
+  callerFirebaseUid: string,
+  params?: {
+    assignedTo?: string;
+    isCompleted?: boolean;
+    page?: number;
+    limit?: number;
+  }
+): Promise<{
+  tasks: Task[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> => {
+  try {
+    const queryParams = new URLSearchParams();
+    queryParams.append('callerFirebaseUid', callerFirebaseUid);
+    if (params?.assignedTo) queryParams.append('assignedTo', params.assignedTo);
+    if (params?.isCompleted !== undefined) queryParams.append('isCompleted', String(params.isCompleted));
+    if (params?.page) queryParams.append('page', String(params.page));
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+
+    const response = await fetch(`${API_BASE_URL}/tasks?${queryParams}`);
+    await handleFetchError(response, 'Failed to fetch tasks');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Create a new task (admin only)
+export const createTask = async (callerFirebaseUid: string, taskData: CreateTaskData): Promise<Task> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...taskData, callerFirebaseUid }),
+    });
+    await handleFetchError(response, 'Failed to create task');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Update task completion status
+export const updateTaskCompletion = async (
+  taskId: string,
+  firebaseUid: string,
+  isCompleted: boolean
+): Promise<Task> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/complete`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ firebaseUid, isCompleted }),
+    });
+    await handleFetchError(response, 'Failed to update task');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Update task (admin only)
+export const updateTask = async (
+  callerFirebaseUid: string,
+  taskId: string,
+  taskData: {
+    title?: string;
+    description?: string;
+    link?: string;
+    assignedTo?: string;
+  }
+): Promise<Task> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...taskData, callerFirebaseUid }),
+    });
+    await handleFetchError(response, 'Failed to update task');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Delete task (admin only)
+export const deleteTask = async (callerFirebaseUid: string, taskId: string): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}?callerFirebaseUid=${callerFirebaseUid}`, {
+      method: 'DELETE',
+    });
+    await handleFetchError(response, 'Failed to delete task');
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};

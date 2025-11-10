@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Flame, LayoutDashboard, Bell } from 'lucide-react';
+import { Flame, LayoutDashboard, Bell, CheckSquare } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { Button } from './ui/button';
 import { ProfileMenu } from './ProfileMenu';
@@ -28,6 +28,12 @@ export const Header = () => {
                 <Button variant="ghost" className="flex items-center gap-2">
                   <LayoutDashboard className="h-4 w-4" />
                   Dashboard
+                </Button>
+              </Link>
+              <Link to="/tasks">
+                <Button variant="ghost" className="flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4" />
+                  Tasks
                 </Button>
               </Link>
               <Link to="/reminder">

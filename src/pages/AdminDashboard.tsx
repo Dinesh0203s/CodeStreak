@@ -52,7 +52,9 @@ import {
   BarChart3,
   PieChart,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import {
   Table,
@@ -77,8 +79,14 @@ import {
   updateUserRole,
   getUserByFirebaseUid,
   refreshAllStudentsStats,
+  getAllTasks,
+  createTask,
+  updateTask,
+  deleteTask,
   College,
-  User
+  User,
+  Task,
+  CreateTaskData
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -133,6 +141,18 @@ const AdminDashboard = () => {
   const [loadingAvailableUsers, setLoadingAvailableUsers] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
 
+  // Task management state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskFormData, setTaskFormData] = useState({
+    title: '',
+    description: '',
+    link: '',
+    assignedTo: '',
+  });
+
   // Check if user is admin before loading dashboard
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -162,6 +182,7 @@ const AdminDashboard = () => {
         fetchColleges();
         fetchStudents();
         fetchDeptAdmins();
+        fetchTasks();
       } catch (error: any) {
         console.error('Error checking admin role:', error);
         toast.error('Failed to verify admin access');
@@ -178,6 +199,7 @@ const AdminDashboard = () => {
     fetchColleges();
     fetchStudents();
     fetchDeptAdmins();
+    fetchTasks();
   }, [studentPage, currentUser?.email, checkingRole]);
 
   useEffect(() => {
@@ -390,6 +412,116 @@ const AdminDashboard = () => {
     } finally {
       setLoadingAvailableUsers(false);
     }
+  };
+
+  // Task management functions
+  const fetchTasks = async () => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      setTasksLoading(true);
+      const data = await getAllTasks(currentUser.uid, {
+        page: 1,
+        limit: 100,
+      });
+      setTasks(data.tasks);
+      
+      // Also fetch available users to display assigned user names
+      if (adminCollege) {
+        await fetchAvailableUsers();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load tasks');
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!currentUser?.uid) return;
+    
+    if (!taskFormData.title || !taskFormData.link || !taskFormData.assignedTo) {
+      toast.error('Please fill in all required fields (title, link, and assign to)');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const taskData: CreateTaskData = {
+        title: taskFormData.title,
+        description: taskFormData.description,
+        link: taskFormData.link,
+        assignedTo: taskFormData.assignedTo,
+        assignedBy: currentUser.uid,
+      };
+      await createTask(currentUser.uid, taskData);
+      toast.success('Task created successfully');
+      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+      setIsTaskDialogOpen(false);
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTask = async () => {
+    if (!currentUser?.uid || !editingTask?._id) return;
+    
+    if (!taskFormData.title || !taskFormData.link || !taskFormData.assignedTo) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await updateTask(currentUser.uid, editingTask._id, {
+        title: taskFormData.title,
+        description: taskFormData.description,
+        link: taskFormData.link,
+        assignedTo: taskFormData.assignedTo,
+      });
+      toast.success('Task updated successfully');
+      setEditingTask(null);
+      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+      setIsTaskDialogOpen(false);
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!currentUser?.uid) return;
+    
+    if (!confirm('Are you sure you want to delete this task?')) return;
+
+    try {
+      await deleteTask(currentUser.uid, taskId);
+      toast.success('Task deleted successfully');
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete task');
+    }
+  };
+
+  const openTaskDialog = (task?: Task) => {
+    if (task) {
+      setEditingTask(task);
+      setTaskFormData({
+        title: task.title,
+        description: task.description || '',
+        link: task.link,
+        assignedTo: task.assignedTo,
+      });
+    } else {
+      setEditingTask(null);
+      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+    }
+    setIsTaskDialogOpen(true);
   };
 
   const fetchStudents = async () => {
@@ -1114,6 +1246,7 @@ const AdminDashboard = () => {
               <TabsTrigger value="students">Student Overview</TabsTrigger>
               <TabsTrigger value="departments">Department Management</TabsTrigger>
               <TabsTrigger value="deptAdmins">Department Admins</TabsTrigger>
+              <TabsTrigger value="tasks">Task Management</TabsTrigger>
               <TabsTrigger value="colleges">College Information</TabsTrigger>
               <TabsTrigger value="reports">Reports & Analytics</TabsTrigger>
             </TabsList>
@@ -1739,6 +1872,230 @@ const AdminDashboard = () => {
                           </TableRow>
                         ))
                       )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Task Management Tab */}
+            <TabsContent value="tasks">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">Task Management</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Assign and manage tasks for students
+                  </p>
+                </div>
+                <Dialog open={isTaskDialogOpen} onOpenChange={(open) => {
+                  setIsTaskDialogOpen(open);
+                  if (open) {
+                    fetchAvailableUsers();
+                  } else {
+                    setEditingTask(null);
+                    setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      className="bg-gradient-streak border-0 text-white"
+                      onClick={() => openTaskDialog()}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Assign Task
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>{editingTask ? 'Edit Task' : 'Assign New Task'}</DialogTitle>
+                      <DialogDescription>
+                        {editingTask ? 'Update task details' : 'Create a new task and assign it to a student'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="task-title">Title *</Label>
+                        <Input
+                          id="task-title"
+                          value={taskFormData.title}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                          placeholder="Enter task title"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-description">Description</Label>
+                        <Input
+                          id="task-description"
+                          value={taskFormData.description}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                          placeholder="Enter task description (optional)"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-link">Link *</Label>
+                        <Input
+                          id="task-link"
+                          value={taskFormData.link}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, link: e.target.value })}
+                          placeholder="https://example.com"
+                          type="url"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Link to the external website or resource for this task
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-assigned-to">Assign To *</Label>
+                        <Select
+                          value={taskFormData.assignedTo}
+                          onValueChange={(value) => setTaskFormData({ ...taskFormData, assignedTo: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a student" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {loadingAvailableUsers ? (
+                              <SelectItem value="loading" disabled>Loading users...</SelectItem>
+                            ) : availableUsers.length === 0 ? (
+                              <SelectItem value="none" disabled>No users available</SelectItem>
+                            ) : (
+                              availableUsers.map((user) => (
+                                <SelectItem key={user.firebaseUid} value={user.firebaseUid}>
+                                  {user.fullName || user.displayName} ({user.email})
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsTaskDialogOpen(false);
+                          setEditingTask(null);
+                          setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={editingTask ? handleUpdateTask : handleCreateTask}
+                        disabled={isSubmitting}
+                        className="bg-gradient-streak border-0 text-white"
+                      >
+                        {isSubmitting ? 'Saving...' : editingTask ? 'Update Task' : 'Create Task'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {tasksLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                  <p className="text-muted-foreground">Loading tasks...</p>
+                </div>
+              ) : tasks.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">No tasks assigned yet</p>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Link</TableHead>
+                        <TableHead>Assigned To</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tasks.map((task) => {
+                        const assignedUser = availableUsers.find(u => u.firebaseUid === task.assignedTo);
+                        return (
+                          <TableRow key={task._id}>
+                            <TableCell className="font-medium">{task.title}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {task.description || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <a
+                                href={task.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Open Link
+                              </a>
+                            </TableCell>
+                            <TableCell>
+                              {assignedUser ? (
+                                <div>
+                                  <div className="font-medium">{assignedUser.fullName || assignedUser.displayName}</div>
+                                  <div className="text-xs text-muted-foreground">{assignedUser.email}</div>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">User not found</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                task.isCompleted
+                                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                  : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                              }`}>
+                                {task.isCompleted ? 'Completed' : 'Pending'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openTaskDialog(task)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete the task "{task.title}"? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => task._id && handleDeleteTask(task._id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

@@ -9,6 +9,7 @@ import challengeRoutes from './routes/challengeRoutes.js';
 import submissionRoutes from './routes/submissionRoutes.js';
 import leaderboardRoutes from './routes/leaderboardRoutes.js';
 import scrapingRoutes from './routes/scrapingRoutes.js';
+import taskRoutes from './routes/taskRoutes.js';
 import { startScheduledRefresh } from './jobs/scheduledRefresh.js';
 
 // Load environment variables
@@ -34,6 +35,7 @@ app.use('/api/challenges', challengeRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/scrape', scrapingRoutes);
+app.use('/api/tasks', taskRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

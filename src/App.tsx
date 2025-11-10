@@ -12,6 +12,7 @@ import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import Reminder from "./pages/Reminder";
+import Tasks from "./pages/Tasks";
 import AdminDashboard from "./pages/AdminDashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import DeptAdminDashboard from "./pages/DeptAdminDashboard";
@@ -41,6 +42,14 @@ const App = () => (
                 } 
               />
               <Route path="/profile" element={<Profile />} />
+              <Route 
+                path="/tasks" 
+                element={
+                  <ProtectedRoute requireRegularUser>
+                    <Tasks />
+                  </ProtectedRoute>
+                } 
+              />
               <Route 
                 path="/reminder" 
                 element={
