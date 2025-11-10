@@ -85,13 +85,16 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  getTaskReport,
   College,
   User,
   Task,
-  CreateTaskData
+  CreateTaskData,
+  TaskReport
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import * as XLSX from 'xlsx';
 
 const SuperAdminDashboard = () => {
   const { user: currentUser } = useAuth();
@@ -169,6 +172,9 @@ const SuperAdminDashboard = () => {
   const [loadingAvailableUsersForTasks, setLoadingAvailableUsersForTasks] = useState(false);
   const [taskCollegeFilter, setTaskCollegeFilter] = useState<string>('all');
   const [selectedUsersForTask, setSelectedUsersForTask] = useState<string[]>([]);
+  const [taskReports, setTaskReports] = useState<Map<string, TaskReport>>(new Map());
+  const [loadingReports, setLoadingReports] = useState<Set<string>>(new Set());
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Calculate real stats from colleges
   const globalStats = {
@@ -610,14 +616,95 @@ const SuperAdminDashboard = () => {
         page: 1,
         limit: 200,
       });
-      setTasks(data.tasks);
+      setTasks(data.tasks || []);
       
       // Also fetch all users to display assigned user names
       await fetchAvailableUsersForTasks();
+      
+      // Fetch reports for all unique tasks
+      const uniqueTasks = new Map<string, Task>();
+      (data.tasks || []).forEach((task: Task) => {
+        const taskLinks = task.links && task.links.length > 0 
+          ? task.links 
+          : (task.link ? [task.link] : []);
+        const key = `${task.title}_${taskLinks.sort().join(',')}`;
+        if (!uniqueTasks.has(key) && task._id) {
+          uniqueTasks.set(key, task);
+        }
+      });
+      
+      // Load reports for each unique task
+      uniqueTasks.forEach(async (task) => {
+        if (task._id) {
+          await loadTaskReport(task._id);
+        }
+      });
     } catch (error: any) {
       toast.error(error.message || 'Failed to load tasks');
     } finally {
       setTasksLoading(false);
+    }
+  };
+
+  const loadTaskReport = async (taskId: string) => {
+    if (!currentUser?.uid || taskReports.has(taskId) || loadingReports.has(taskId)) return;
+
+    try {
+      setLoadingReports(prev => new Set(prev).add(taskId));
+      const report = await getTaskReport(currentUser.uid, taskId) as TaskReport;
+      setTaskReports(prev => new Map(prev).set(taskId, report));
+    } catch (error: any) {
+      console.error('Error loading task report:', error);
+    } finally {
+      setLoadingReports(prev => {
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  };
+
+  const handleExportToExcel = async (task: Task) => {
+    if (!currentUser?.uid || !task._id) return;
+
+    try {
+      setReportLoading(true);
+      const report = await getTaskReport(currentUser.uid, task._id) as TaskReport;
+      
+      // Prepare data for Excel
+      const excelData = report.students.map(student => {
+        const row: any = {
+          'Student Name': student.studentName,
+          'Email': student.email,
+          'College': student.college,
+        };
+        
+        // Add each link as a column
+        report.links.forEach((link, index) => {
+          const linkCompletion = student.linkCompletions.find(lc => lc.link === link);
+          row[`Link ${report.links.length > 1 ? index + 1 : ''} (${link.substring(0, 30)}...)`] = 
+            linkCompletion?.isCompleted ? 'Completed' : 'Not Completed';
+        });
+        
+        return row;
+      });
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Task Report');
+
+      // Generate filename
+      const filename = `${task.title.replace(/[^a-z0-9]/gi, '_')}_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      // Write file
+      XLSX.writeFile(wb, filename);
+      toast.success('Report exported to Excel successfully!');
+    } catch (error: any) {
+      console.error('Error exporting to Excel:', error);
+      toast.error(error.message || 'Failed to export report');
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -2298,110 +2385,166 @@ const SuperAdminDashboard = () => {
                   <p className="text-muted-foreground">No tasks assigned yet</p>
                 </Card>
               ) : (
-                <div className="space-y-4">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Link</TableHead>
-                        <TableHead>Assigned To</TableHead>
-                        <TableHead>College</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tasks.map((task) => {
-                        const assignedUser = availableUsersForTasks.find(u => u.firebaseUid === task.assignedTo);
-                        return (
-                          <TableRow key={task._id}>
-                            <TableCell className="font-medium">{task.title}</TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {task.description || '-'}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-2">
-                                {(task.links && task.links.length > 0 ? task.links : (task.link ? [task.link] : [])).map((link, index) => (
-                                  <a
-                                    key={index}
-                                    href={link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary hover:underline flex items-center gap-1 text-sm"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                    Link {task.links && task.links.length > 1 ? index + 1 : ''}
-                                  </a>
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {assignedUser ? (
-                                <div>
-                                  <div className="font-medium">{assignedUser.fullName || assignedUser.displayName}</div>
-                                  <div className="text-xs text-muted-foreground">{assignedUser.email}</div>
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">User not found</span>
+                <div className="space-y-6">
+                  {(() => {
+                    // Group tasks by title and links
+                    const taskGroups = new Map<string, Task[]>();
+                    tasks.forEach(task => {
+                      const taskLinks = task.links && task.links.length > 0 
+                        ? task.links 
+                        : (task.link ? [task.link] : []);
+                      const key = `${task.title}_${taskLinks.sort().join(',')}`;
+                      if (!taskGroups.has(key)) {
+                        taskGroups.set(key, []);
+                      }
+                      taskGroups.get(key)!.push(task);
+                    });
+
+                    return Array.from(taskGroups.entries()).map(([key, taskGroup]) => {
+                      const firstTask = taskGroup[0];
+                      const taskLinks = firstTask.links && firstTask.links.length > 0 
+                        ? firstTask.links 
+                        : (firstTask.link ? [firstTask.link] : []);
+                      
+                      // Get report for this task group
+                      const report = firstTask._id ? taskReports.get(firstTask._id) : null;
+                      const isLoadingReport = firstTask._id ? loadingReports.has(firstTask._id) : false;
+
+                      // Load report if not loaded yet
+                      if (firstTask._id && !report && !isLoadingReport) {
+                        loadTaskReport(firstTask._id);
+                      }
+
+                      return (
+                        <Card key={key} className="p-6">
+                          <div className="flex items-start justify-between mb-4">
+                            <div>
+                              <h3 className="text-lg font-semibold">{firstTask.title}</h3>
+                              {firstTask.description && (
+                                <p className="text-sm text-muted-foreground mt-1">{firstTask.description}</p>
                               )}
-                            </TableCell>
-                            <TableCell>
-                              {assignedUser?.college || '-'}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                task.isCompleted
-                                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                                  : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
-                              }`}>
-                                {task.isCompleted ? 'Completed' : 'Pending'}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => openTaskDialog(task)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-destructive hover:text-destructive"
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleExportToExcel(firstTask)}
+                                disabled={reportLoading || isLoadingReport}
+                              >
+                                <Download className="h-4 w-4 mr-2" />
+                                Export Excel
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openTaskDialog(firstTask)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete the task "{firstTask.title}"? This will delete all instances of this task. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => {
+                                        taskGroup.forEach(t => {
+                                          if (t._id) handleDeleteTask(t._id);
+                                        });
+                                      }}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                     >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Task</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete the task "{task.title}"? This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => task._id && handleDeleteTask(task._id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            {isLoadingReport ? (
+                              <div className="text-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
+                                <p className="text-sm text-muted-foreground">Loading user data...</p>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                            ) : report && report.students.length > 0 ? (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Student Name</TableHead>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>College</TableHead>
+                                    {taskLinks.map((link, index) => (
+                                      <TableHead key={index} className="min-w-[150px]">
+                                        <div className="flex flex-col">
+                                          <span>Link {taskLinks.length > 1 ? index + 1 : ''}</span>
+                                          <a
+                                            href={link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                            View
+                                          </a>
+                                        </div>
+                                      </TableHead>
+                                    ))}
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {report.students.map((student, studentIndex) => (
+                                    <TableRow key={studentIndex}>
+                                      <TableCell className="font-medium">
+                                        {student.studentName}
+                                      </TableCell>
+                                      <TableCell>{student.email}</TableCell>
+                                      <TableCell>{student.college}</TableCell>
+                                      {taskLinks.map((link, linkIndex) => {
+                                        const linkCompletion = student.linkCompletions.find(lc => lc.link === link);
+                                        const isCompleted = linkCompletion?.isCompleted || false;
+                                        return (
+                                          <TableCell key={linkIndex}>
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                              isCompleted
+                                                ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                                : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                            }`}>
+                                              {isCompleted ? '✓ Completed' : 'Pending'}
+                                            </span>
+                                          </TableCell>
+                                        );
+                                      })}
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground">
+                                No students assigned to this task
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </TabsContent>
