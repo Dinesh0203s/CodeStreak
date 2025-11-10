@@ -60,11 +60,20 @@ router.get('/', requireAdmin, async (req: Request, res: Response) => {
 // Create a new task (admin only)
 router.post('/', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { title, description, link, assignedTo, callerFirebaseUid } = req.body;
+    const { title, description, links, link, assignedTo, callerFirebaseUid } = req.body;
     const assignedBy = req.user?.firebaseUid || callerFirebaseUid;
 
-    if (!title || !link || !assignedTo) {
-      return res.status(400).json({ error: 'Missing required fields: title, link, assignedTo' });
+    // Support both old format (single link) and new format (multiple links)
+    let taskLinks: string[] = [];
+    if (links && Array.isArray(links)) {
+      taskLinks = links.filter((l: string) => l && l.trim());
+    } else if (link) {
+      // Backward compatibility: if single link is provided, convert to array
+      taskLinks = [link.trim()];
+    }
+
+    if (!title || taskLinks.length === 0 || !assignedTo) {
+      return res.status(400).json({ error: 'Missing required fields: title, links (at least one), assignedTo' });
     }
 
     if (!assignedBy) {
@@ -80,7 +89,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
     const task = new Task({
       title,
       description,
-      link,
+      links: taskLinks,
       assignedTo,
       assignedBy,
       isCompleted: false,
@@ -133,7 +142,7 @@ router.patch('/:taskId/complete', async (req: Request, res: Response) => {
 router.put('/:taskId', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params;
-    const { title, description, link, assignedTo } = req.body;
+    const { title, description, links, link, assignedTo } = req.body;
 
     const task = await Task.findById(taskId);
     if (!task) {
@@ -142,7 +151,21 @@ router.put('/:taskId', requireAdmin, async (req: Request, res: Response) => {
 
     if (title !== undefined) task.title = title;
     if (description !== undefined) task.description = description;
-    if (link !== undefined) task.link = link;
+    
+    // Handle links update - support both old and new format
+    if (links !== undefined) {
+      if (Array.isArray(links)) {
+        const filteredLinks = links.filter((l: string) => l && l.trim());
+        if (filteredLinks.length === 0) {
+          return res.status(400).json({ error: 'At least one link is required' });
+        }
+        task.links = filteredLinks;
+      }
+    } else if (link !== undefined) {
+      // Backward compatibility: if single link is provided, convert to array
+      task.links = [link.trim()];
+    }
+    
     if (assignedTo !== undefined) {
       // Verify that assignedTo user exists
       const user = await User.findOne({ firebaseUid: assignedTo });

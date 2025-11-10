@@ -166,6 +166,11 @@ interface TaskCardProps {
 }
 
 const TaskCard = ({ task, onToggleComplete, isUpdating }: TaskCardProps) => {
+  // Support both old format (single link) and new format (multiple links)
+  const links = task.links && task.links.length > 0 
+    ? task.links 
+    : (task.link ? [task.link] : []);
+
   return (
     <Card className={`p-6 ${task.isCompleted ? 'opacity-75' : ''}`}>
       <div className="flex items-start gap-4">
@@ -193,16 +198,21 @@ const TaskCard = ({ task, onToggleComplete, isUpdating }: TaskCardProps) => {
               {task.description}
             </p>
           )}
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(task.link, '_blank')}
-              className="flex items-center gap-2"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open Link
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {links.map((link, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(link, '_blank')}
+                  className="flex items-center gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Link {links.length > 1 ? index + 1 : ''}
+                </Button>
+              ))}
+            </div>
             {task.completedAt && (
               <span className="text-xs text-muted-foreground">
                 Completed on {new Date(task.completedAt).toLocaleDateString()}

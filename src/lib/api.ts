@@ -773,7 +773,8 @@ export interface Task {
   _id?: string;
   title: string;
   description?: string;
-  link: string;
+  links: string[]; // Array of links
+  link?: string; // Backward compatibility - will be converted to links array
   assignedTo: string;
   assignedBy: string;
   isCompleted: boolean;
@@ -785,7 +786,7 @@ export interface Task {
 export interface CreateTaskData {
   title: string;
   description?: string;
-  link: string;
+  links: string[]; // Array of links
   assignedTo: string;
   assignedBy: string;
 }
@@ -890,7 +891,7 @@ export const updateTask = async (
   taskData: {
     title?: string;
     description?: string;
-    link?: string;
+    links?: string[];
     assignedTo?: string;
   }
 ): Promise<Task> => {

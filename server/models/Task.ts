@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface ITask extends Document {
   title: string;
   description?: string;
-  link: string; // Link to external website
+  links: string[]; // Array of links to external websites
   assignedTo: string; // firebaseUid of the user
   assignedBy: string; // firebaseUid of the admin who assigned it
   isCompleted: boolean;
@@ -23,10 +23,16 @@ const TaskSchema: Schema = new Schema(
       type: String,
       trim: true,
     },
-    link: {
-      type: String,
+    links: {
+      type: [String],
       required: true,
-      trim: true,
+      default: [],
+      validate: {
+        validator: function(v: string[]) {
+          return v.length > 0;
+        },
+        message: 'At least one link is required'
+      }
     },
     assignedTo: {
       type: String,

@@ -54,7 +54,8 @@ import {
   FileSpreadsheet,
   RefreshCw,
   ExternalLink,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import {
   Table,
@@ -149,7 +150,7 @@ const AdminDashboard = () => {
   const [taskFormData, setTaskFormData] = useState({
     title: '',
     description: '',
-    link: '',
+    links: [''] as string[],
     assignedTo: '',
   });
 
@@ -440,8 +441,9 @@ const AdminDashboard = () => {
   const handleCreateTask = async () => {
     if (!currentUser?.uid) return;
     
-    if (!taskFormData.title || !taskFormData.link || !taskFormData.assignedTo) {
-      toast.error('Please fill in all required fields (title, link, and assign to)');
+    const validLinks = taskFormData.links.filter(link => link.trim());
+    if (!taskFormData.title || validLinks.length === 0 || !taskFormData.assignedTo) {
+      toast.error('Please fill in all required fields (title, at least one link, and assign to)');
       return;
     }
 
@@ -450,13 +452,13 @@ const AdminDashboard = () => {
       const taskData: CreateTaskData = {
         title: taskFormData.title,
         description: taskFormData.description,
-        link: taskFormData.link,
+        links: validLinks,
         assignedTo: taskFormData.assignedTo,
         assignedBy: currentUser.uid,
       };
       await createTask(currentUser.uid, taskData);
       toast.success('Task created successfully');
-      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
       setIsTaskDialogOpen(false);
       await fetchTasks();
     } catch (error: any) {
@@ -469,7 +471,8 @@ const AdminDashboard = () => {
   const handleUpdateTask = async () => {
     if (!currentUser?.uid || !editingTask?._id) return;
     
-    if (!taskFormData.title || !taskFormData.link || !taskFormData.assignedTo) {
+    const validLinks = taskFormData.links.filter(link => link.trim());
+    if (!taskFormData.title || validLinks.length === 0 || !taskFormData.assignedTo) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -479,12 +482,12 @@ const AdminDashboard = () => {
       await updateTask(currentUser.uid, editingTask._id, {
         title: taskFormData.title,
         description: taskFormData.description,
-        link: taskFormData.link,
+        links: validLinks,
         assignedTo: taskFormData.assignedTo,
       });
       toast.success('Task updated successfully');
       setEditingTask(null);
-      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
       setIsTaskDialogOpen(false);
       await fetchTasks();
     } catch (error: any) {
@@ -511,15 +514,19 @@ const AdminDashboard = () => {
   const openTaskDialog = (task?: Task) => {
     if (task) {
       setEditingTask(task);
+      // Support both old format (single link) and new format (multiple links)
+      const links = task.links && task.links.length > 0 
+        ? task.links 
+        : (task.link ? [task.link] : ['']);
       setTaskFormData({
         title: task.title,
         description: task.description || '',
-        link: task.link,
+        links: links,
         assignedTo: task.assignedTo,
       });
     } else {
       setEditingTask(null);
-      setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
     }
     setIsTaskDialogOpen(true);
   };
@@ -1893,7 +1900,7 @@ const AdminDashboard = () => {
                     fetchAvailableUsers();
                   } else {
                     setEditingTask(null);
-                    setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+                    setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
                   }
                 }}>
                   <DialogTrigger asChild>
@@ -1932,16 +1939,51 @@ const AdminDashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="task-link">Link *</Label>
-                        <Input
-                          id="task-link"
-                          value={taskFormData.link}
-                          onChange={(e) => setTaskFormData({ ...taskFormData, link: e.target.value })}
-                          placeholder="https://example.com"
-                          type="url"
-                        />
+                        <Label>Links *</Label>
+                        <div className="space-y-2">
+                          {taskFormData.links.map((link, index) => (
+                            <div key={index} className="flex gap-2">
+                              <Input
+                                value={link}
+                                onChange={(e) => {
+                                  const newLinks = [...taskFormData.links];
+                                  newLinks[index] = e.target.value;
+                                  setTaskFormData({ ...taskFormData, links: newLinks });
+                                }}
+                                placeholder="https://example.com"
+                                type="url"
+                              />
+                              {taskFormData.links.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newLinks = taskFormData.links.filter((_, i) => i !== index);
+                                    setTaskFormData({ ...taskFormData, links: newLinks });
+                                  }}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTaskFormData({ ...taskFormData, links: [...taskFormData.links, ''] });
+                            }}
+                            className="w-full"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Another Link
+                          </Button>
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          Link to the external website or resource for this task
+                          Add one or more links to external websites or resources for this task
                         </p>
                       </div>
                       <div className="space-y-2">
@@ -1975,7 +2017,7 @@ const AdminDashboard = () => {
                         onClick={() => {
                           setIsTaskDialogOpen(false);
                           setEditingTask(null);
-                          setTaskFormData({ title: '', description: '', link: '', assignedTo: '' });
+                          setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
                         }}
                       >
                         Cancel
@@ -2025,15 +2067,20 @@ const AdminDashboard = () => {
                               {task.description || '-'}
                             </TableCell>
                             <TableCell>
-                              <a
-                                href={task.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline flex items-center gap-1"
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                                Open Link
-                              </a>
+                              <div className="flex flex-wrap gap-2">
+                                {(task.links && task.links.length > 0 ? task.links : (task.link ? [task.link] : [])).map((link, index) => (
+                                  <a
+                                    key={index}
+                                    href={link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline flex items-center gap-1 text-sm"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Link {task.links && task.links.length > 1 ? index + 1 : ''}
+                                  </a>
+                                ))}
+                              </div>
                             </TableCell>
                             <TableCell>
                               {assignedUser ? (

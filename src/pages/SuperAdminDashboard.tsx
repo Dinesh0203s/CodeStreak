@@ -50,7 +50,11 @@ import {
   Edit,
   UserCog,
   X,
-  RefreshCw
+  RefreshCw,
+  ExternalLink,
+  Loader2,
+  FileText,
+  CheckSquare
 } from 'lucide-react';
 import {
   Table,
@@ -61,6 +65,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   getColleges, 
   createCollege, 
@@ -76,8 +81,14 @@ import {
   updateDepartment,
   deleteDepartment,
   refreshAllStudentsStats,
+  getAllTasks,
+  createTask,
+  updateTask,
+  deleteTask,
   College,
-  User
+  User,
+  Task,
+  CreateTaskData
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -143,6 +154,22 @@ const SuperAdminDashboard = () => {
     department: '',
   });
 
+  // Task management state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskFormData, setTaskFormData] = useState({
+    title: '',
+    description: '',
+    links: [''] as string[],
+    assignedTo: '',
+  });
+  const [availableUsersForTasks, setAvailableUsersForTasks] = useState<User[]>([]);
+  const [loadingAvailableUsersForTasks, setLoadingAvailableUsersForTasks] = useState(false);
+  const [taskCollegeFilter, setTaskCollegeFilter] = useState<string>('all');
+  const [selectedUsersForTask, setSelectedUsersForTask] = useState<string[]>([]);
+
   // Calculate real stats from colleges
   const globalStats = {
     totalColleges: colleges.length,
@@ -156,6 +183,18 @@ const SuperAdminDashboard = () => {
     fetchTopPerformers();
     fetchUsers();
   }, [userPage, userRoleFilter, userCollegeFilter]);
+
+  useEffect(() => {
+    if (currentUser?.uid) {
+      fetchTasks();
+    }
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (isTaskDialogOpen && !editingTask) {
+      fetchAvailableUsersForTasks();
+    }
+  }, [taskCollegeFilter, isTaskDialogOpen, editingTask]);
 
   useEffect(() => {
     if (selectedCollegeForDept) {
@@ -561,6 +600,170 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  // Task management functions
+  const fetchTasks = async () => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      setTasksLoading(true);
+      const data = await getAllTasks(currentUser.uid, {
+        page: 1,
+        limit: 200,
+      });
+      setTasks(data.tasks);
+      
+      // Also fetch all users to display assigned user names
+      await fetchAvailableUsersForTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load tasks');
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
+  const fetchAvailableUsersForTasks = async () => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      setLoadingAvailableUsersForTasks(true);
+      const params: any = {
+        page: 1,
+        limit: 1000, // Fetch more users for super-admin
+      };
+      if (taskCollegeFilter && taskCollegeFilter !== 'all') {
+        params.college = taskCollegeFilter;
+      }
+      const data = await getAllUsers(currentUser.uid, params);
+      setAvailableUsersForTasks(data.users);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load users');
+    } finally {
+      setLoadingAvailableUsersForTasks(false);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!currentUser?.uid) return;
+    
+    const validLinks = taskFormData.links.filter(link => link.trim());
+    const usersToAssign = selectedUsersForTask.length > 0 ? selectedUsersForTask : [taskFormData.assignedTo];
+    
+    if (!taskFormData.title || validLinks.length === 0 || usersToAssign.length === 0) {
+      toast.error('Please fill in all required fields (title, at least one link, and assign to at least one user)');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      // Create task for each selected user
+      const createPromises = usersToAssign.map(userId => {
+        const taskData: CreateTaskData = {
+          title: taskFormData.title,
+          description: taskFormData.description,
+          links: validLinks,
+          assignedTo: userId,
+          assignedBy: currentUser.uid,
+        };
+        return createTask(currentUser.uid, taskData);
+      });
+      
+      await Promise.all(createPromises);
+      toast.success(`Task created successfully for ${usersToAssign.length} user(s)`);
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
+      setSelectedUsersForTask([]);
+      setIsTaskDialogOpen(false);
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTask = async () => {
+    if (!currentUser?.uid || !editingTask?._id) return;
+    
+    const validLinks = taskFormData.links.filter(link => link.trim());
+    if (!taskFormData.title || validLinks.length === 0 || !taskFormData.assignedTo) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await updateTask(currentUser.uid, editingTask._id, {
+        title: taskFormData.title,
+        description: taskFormData.description,
+        links: validLinks,
+        assignedTo: taskFormData.assignedTo,
+      });
+      toast.success('Task updated successfully');
+      setEditingTask(null);
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
+      setSelectedUsersForTask([]);
+      setIsTaskDialogOpen(false);
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!currentUser?.uid) return;
+    
+    if (!confirm('Are you sure you want to delete this task?')) return;
+
+    try {
+      await deleteTask(currentUser.uid, taskId);
+      toast.success('Task deleted successfully');
+      await fetchTasks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete task');
+    }
+  };
+
+  const openTaskDialog = (task?: Task) => {
+    if (task) {
+      setEditingTask(task);
+      // Support both old format (single link) and new format (multiple links)
+      const links = task.links && task.links.length > 0 
+        ? task.links 
+        : (task.link ? [task.link] : ['']);
+      setTaskFormData({
+        title: task.title,
+        description: task.description || '',
+        links: links,
+        assignedTo: task.assignedTo,
+      });
+      setSelectedUsersForTask([]);
+    } else {
+      setEditingTask(null);
+      setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
+      setSelectedUsersForTask([]);
+    }
+    setIsTaskDialogOpen(true);
+    fetchAvailableUsersForTasks();
+  };
+
+  const handleSelectAllUsers = () => {
+    if (selectedUsersForTask.length === availableUsersForTasks.length) {
+      setSelectedUsersForTask([]);
+    } else {
+      setSelectedUsersForTask(availableUsersForTasks.map(u => u.firebaseUid));
+    }
+  };
+
+  const handleToggleUserSelection = (userId: string) => {
+    setSelectedUsersForTask(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
   const filteredColleges = colleges.filter(college =>
     college.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     college.location?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -717,6 +920,7 @@ const SuperAdminDashboard = () => {
               <TabsTrigger value="users">User Management</TabsTrigger>
               <TabsTrigger value="roles">Role Management</TabsTrigger>
               <TabsTrigger value="departments">Department Management</TabsTrigger>
+              <TabsTrigger value="tasks">Task Management</TabsTrigger>
             </TabsList>
 
             {/* College Management Tab */}
@@ -1839,6 +2043,367 @@ const SuperAdminDashboard = () => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+            </TabsContent>
+
+            {/* Task Management Tab */}
+            <TabsContent value="tasks">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">Task Management</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Assign and manage tasks for all users across all colleges
+                  </p>
+                </div>
+                <Dialog open={isTaskDialogOpen} onOpenChange={(open) => {
+                  setIsTaskDialogOpen(open);
+                  if (open) {
+                    fetchAvailableUsersForTasks();
+                  } else {
+                    setEditingTask(null);
+                    setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
+                    setSelectedUsersForTask([]);
+                    setTaskCollegeFilter('all');
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      className="bg-gradient-streak border-0 text-white"
+                      onClick={() => openTaskDialog()}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Assign Task
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>{editingTask ? 'Edit Task' : 'Assign New Task'}</DialogTitle>
+                      <DialogDescription>
+                        {editingTask ? 'Update task details' : 'Create a new task and assign it to any user'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="task-title">Title *</Label>
+                        <Input
+                          id="task-title"
+                          value={taskFormData.title}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                          placeholder="Enter task title"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-description">Description</Label>
+                        <Input
+                          id="task-description"
+                          value={taskFormData.description}
+                          onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                          placeholder="Enter task description (optional)"
+                        />
+                      </div>
+                      {!editingTask && (
+                        <div className="space-y-2">
+                          <Label htmlFor="task-college-filter">Filter by College</Label>
+                          <Select
+                            value={taskCollegeFilter}
+                            onValueChange={(value) => {
+                              setTaskCollegeFilter(value);
+                              setSelectedUsersForTask([]);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All Colleges" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Colleges</SelectItem>
+                              {colleges.map((college) => (
+                                <SelectItem key={college._id || college.name} value={college.name}>
+                                  {college.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label>Links *</Label>
+                        <div className="space-y-2">
+                          {taskFormData.links.map((link, index) => (
+                            <div key={index} className="flex gap-2">
+                              <Input
+                                value={link}
+                                onChange={(e) => {
+                                  const newLinks = [...taskFormData.links];
+                                  newLinks[index] = e.target.value;
+                                  setTaskFormData({ ...taskFormData, links: newLinks });
+                                }}
+                                placeholder="https://example.com"
+                                type="url"
+                              />
+                              {taskFormData.links.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newLinks = taskFormData.links.filter((_, i) => i !== index);
+                                    setTaskFormData({ ...taskFormData, links: newLinks });
+                                  }}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTaskFormData({ ...taskFormData, links: [...taskFormData.links, ''] });
+                            }}
+                            className="w-full"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Another Link
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Add one or more links to external websites or resources for this task
+                        </p>
+                      </div>
+                      {!editingTask ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>Assign To *</Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleSelectAllUsers}
+                              className="text-xs"
+                            >
+                              <CheckSquare className="h-4 w-4 mr-1" />
+                              {selectedUsersForTask.length === availableUsersForTasks.length ? 'Deselect All' : 'Select All'}
+                            </Button>
+                          </div>
+                          <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
+                            {loadingAvailableUsersForTasks ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">Loading users...</p>
+                            ) : availableUsersForTasks.length === 0 ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">No users available</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {availableUsersForTasks.map((user) => (
+                                  <div
+                                    key={user.firebaseUid}
+                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                      selectedUsersForTask.includes(user.firebaseUid)
+                                        ? 'border-primary bg-primary/10'
+                                        : 'hover:bg-muted'
+                                    }`}
+                                    onClick={() => handleToggleUserSelection(user.firebaseUid)}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Checkbox
+                                        checked={selectedUsersForTask.includes(user.firebaseUid)}
+                                        onCheckedChange={() => handleToggleUserSelection(user.firebaseUid)}
+                                      />
+                                      {user.photoURL && (
+                                        <img
+                                          src={user.photoURL}
+                                          alt={user.displayName}
+                                          className="w-8 h-8 rounded-full"
+                                        />
+                                      )}
+                                      <div className="flex-1">
+                                        <div className="font-medium">{user.fullName || user.displayName}</div>
+                                        <div className="text-sm text-muted-foreground">{user.email}</div>
+                                        {user.college && (
+                                          <div className="text-xs text-muted-foreground">{user.college}</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedUsersForTask.length > 0 
+                              ? `${selectedUsersForTask.length} user(s) selected`
+                              : 'Select one or more users to assign this task'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label htmlFor="task-assigned-to">Assign To *</Label>
+                          <Select
+                            value={taskFormData.assignedTo}
+                            onValueChange={(value) => setTaskFormData({ ...taskFormData, assignedTo: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a user" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {loadingAvailableUsersForTasks ? (
+                                <SelectItem value="loading" disabled>Loading users...</SelectItem>
+                              ) : availableUsersForTasks.length === 0 ? (
+                                <SelectItem value="none" disabled>No users available</SelectItem>
+                              ) : (
+                                availableUsersForTasks.map((user) => (
+                                  <SelectItem key={user.firebaseUid} value={user.firebaseUid}>
+                                    {user.fullName || user.displayName} ({user.email}) {user.college && `- ${user.college}`}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsTaskDialogOpen(false);
+                          setEditingTask(null);
+                          setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
+                          setSelectedUsersForTask([]);
+                          setTaskCollegeFilter('all');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={editingTask ? handleUpdateTask : handleCreateTask}
+                        disabled={isSubmitting}
+                        className="bg-gradient-streak border-0 text-white"
+                      >
+                        {isSubmitting ? 'Saving...' : editingTask ? 'Update Task' : 'Create Task'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {tasksLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                  <p className="text-muted-foreground">Loading tasks...</p>
+                </div>
+              ) : tasks.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">No tasks assigned yet</p>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Link</TableHead>
+                        <TableHead>Assigned To</TableHead>
+                        <TableHead>College</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tasks.map((task) => {
+                        const assignedUser = availableUsersForTasks.find(u => u.firebaseUid === task.assignedTo);
+                        return (
+                          <TableRow key={task._id}>
+                            <TableCell className="font-medium">{task.title}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {task.description || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-2">
+                                {(task.links && task.links.length > 0 ? task.links : (task.link ? [task.link] : [])).map((link, index) => (
+                                  <a
+                                    key={index}
+                                    href={link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline flex items-center gap-1 text-sm"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Link {task.links && task.links.length > 1 ? index + 1 : ''}
+                                  </a>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {assignedUser ? (
+                                <div>
+                                  <div className="font-medium">{assignedUser.fullName || assignedUser.displayName}</div>
+                                  <div className="text-xs text-muted-foreground">{assignedUser.email}</div>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">User not found</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {assignedUser?.college || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                task.isCompleted
+                                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                  : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                              }`}>
+                                {task.isCompleted ? 'Completed' : 'Pending'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openTaskDialog(task)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete the task "{task.title}"? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => task._id && handleDeleteTask(task._id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </Card>
