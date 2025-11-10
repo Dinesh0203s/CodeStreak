@@ -4,9 +4,14 @@ export interface ITask extends Document {
   title: string;
   description?: string;
   links: string[]; // Array of links to external websites
+  linkCompletion: Array<{
+    link: string;
+    isCompleted: boolean;
+    completedAt?: Date;
+  }>; // Track completion status for each link
   assignedTo: string; // firebaseUid of the user
   assignedBy: string; // firebaseUid of the admin who assigned it
-  isCompleted: boolean;
+  isCompleted: boolean; // Overall completion (all links completed)
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -33,6 +38,14 @@ const TaskSchema: Schema = new Schema(
         },
         message: 'At least one link is required'
       }
+    },
+    linkCompletion: {
+      type: [{
+        link: String,
+        isCompleted: { type: Boolean, default: false },
+        completedAt: Date,
+      }],
+      default: [],
     },
     assignedTo: {
       type: String,

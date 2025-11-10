@@ -84,10 +84,12 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  getTaskReport,
   College,
   User,
   Task,
-  CreateTaskData
+  CreateTaskData,
+  TaskReport
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -153,6 +155,10 @@ const AdminDashboard = () => {
     links: [''] as string[],
     assignedTo: '',
   });
+  const [taskReport, setTaskReport] = useState<TaskReport | null>(null);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [selectedTaskForReport, setSelectedTaskForReport] = useState<Task | null>(null);
 
   // Check if user is admin before loading dashboard
   useEffect(() => {
@@ -529,6 +535,23 @@ const AdminDashboard = () => {
       setTaskFormData({ title: '', description: '', links: [''], assignedTo: '' });
     }
     setIsTaskDialogOpen(true);
+  };
+
+  const handleGenerateReport = async (task: Task) => {
+    if (!currentUser?.uid || !task._id) return;
+
+    try {
+      setReportLoading(true);
+      setSelectedTaskForReport(task);
+      const report = await getTaskReport(currentUser.uid, task._id) as TaskReport;
+      setTaskReport(report);
+      setIsReportDialogOpen(true);
+    } catch (error: any) {
+      console.error('Error generating report:', error);
+      toast.error(error.message || 'Failed to generate report');
+    } finally {
+      setReportLoading(false);
+    }
   };
 
   const fetchStudents = async () => {

@@ -769,11 +769,18 @@ export const adminUpdateUser = async (
 };
 
 // Task API
+export interface LinkCompletion {
+  link: string;
+  isCompleted: boolean;
+  completedAt?: string;
+}
+
 export interface Task {
   _id?: string;
   title: string;
   description?: string;
   links: string[]; // Array of links
+  linkCompletion?: LinkCompletion[]; // Completion status for each link
   link?: string; // Backward compatibility - will be converted to links array
   assignedTo: string;
   assignedBy: string;
@@ -781,6 +788,21 @@ export interface Task {
   completedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface TaskReport {
+  taskTitle: string;
+  links: string[];
+  students: Array<{
+    studentName: string;
+    email: string;
+    college: string;
+    linkCompletions: Array<{
+      link: string;
+      isCompleted: boolean;
+      completedAt?: string | null;
+    }>;
+  }>;
 }
 
 export interface CreateTaskData {
@@ -920,6 +942,51 @@ export const deleteTask = async (callerFirebaseUid: string, taskId: string): Pro
       method: 'DELETE',
     });
     await handleFetchError(response, 'Failed to delete task');
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Update link completion status
+export const updateLinkCompletion = async (
+  taskId: string,
+  firebaseUid: string,
+  link: string,
+  isCompleted: boolean
+): Promise<Task> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/link-complete`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ firebaseUid, link, isCompleted }),
+    });
+    await handleFetchError(response, 'Failed to update link completion');
+    return response.json();
+  } catch (error: any) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      throw new Error('Backend server is not running. Please start it with: npm run server');
+    }
+    throw error;
+  }
+};
+
+// Get task report (admin only)
+export const getTaskReport = async (
+  callerFirebaseUid: string,
+  taskId?: string
+): Promise<TaskReport | { reports: TaskReport[] }> => {
+  try {
+    const url = taskId 
+      ? `${API_BASE_URL}/tasks/report/${taskId}?callerFirebaseUid=${callerFirebaseUid}`
+      : `${API_BASE_URL}/tasks/report?callerFirebaseUid=${callerFirebaseUid}`;
+    const response = await fetch(url);
+    await handleFetchError(response, 'Failed to fetch task report');
+    return response.json();
   } catch (error: any) {
     if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
       throw new Error('Backend server is not running. Please start it with: npm run server');
